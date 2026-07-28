@@ -1899,6 +1899,20 @@ Format your response in a clear, concise JSON structure (strictly valid JSON onl
 
 // --- Vite & Client Middleware Setup ---
 
+let serverlessInitialized = false;
+export async function initServerless() {
+  if (!serverlessInitialized) {
+    serverlessInitialized = true;
+    try {
+      await syncSupabaseDatabase();
+    } catch (e) {
+      console.error('Serverless init error:', e);
+    }
+  }
+}
+
+export default app;
+
 async function startServer() {
   await syncSupabaseDatabase();
 
@@ -1921,4 +1935,7 @@ async function startServer() {
   });
 }
 
-startServer();
+if (!process.env.VERCEL && !process.env.VERCEL_ENV) {
+  startServer();
+}
+
