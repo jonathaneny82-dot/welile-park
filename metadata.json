@@ -1,0 +1,6 @@
+{
+  "name": "welile PARK",
+  "description": "An integrated smart application combining digital parking space reservation, real-time occupancy monitoring, QR ticket entry, vehicle maintenance booking, repair tracking, and AI-powered vehicle diagnostics.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
