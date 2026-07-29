@@ -123,7 +123,7 @@ export const RoleSelector: React.FC<RoleSelectorProps> = ({
               <Settings className="w-5 h-5 animate-spin-slow" />
             </div>
             <div>
-              <h1 className="text-lg font-bold text-gray-900 tracking-tight">welile PARK</h1>
+              <h1 className="text-lg font-bold text-gray-900 tracking-tight">WELILE CAR HUB</h1>
               <p className="text-xs text-gray-500 font-mono">Integrated Parking & Vehicle Service</p>
             </div>
           </div>

@@ -190,7 +190,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </div>
             <div>
               <h1 className="text-sm font-black tracking-tight text-white leading-none flex items-center gap-1.5">
-                welile PARK
+                WELILE CAR HUB
                 <span className="hidden sm:inline-block px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 text-[10px] font-mono font-bold">SMART MOBILITY</span>
               </h1>
               <p className="text-[10px] text-purple-300 font-mono font-semibold">Mobility Command Center</p>

@@ -195,10 +195,10 @@ export const ConfirmEmailPage: React.FC<ConfirmEmailPageProps> = ({
       {/* Top Header Logo */}
       <div className="w-full max-w-xl flex items-center justify-between pt-2">
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-xl bg-slate-950 text-white flex items-center justify-center font-black text-xs shadow-md">
-            UG
+          <div className="w-8 h-8 rounded-xl bg-slate-950 text-white flex items-center justify-center font-black text-[10px] shadow-md">
+            WCH
           </div>
-          <span className="font-extrabold text-slate-900 tracking-tight text-lg">UG-PARK</span>
+          <span className="font-extrabold text-slate-900 tracking-tight text-lg">WELILE CAR HUB</span>
         </div>
         <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/80 border border-slate-200/80 text-slate-700 text-xs font-medium shadow-xs">
           <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
@@ -231,7 +231,7 @@ export const ConfirmEmailPage: React.FC<ConfirmEmailPageProps> = ({
             </h1>
             {status === 'success' ? (
               <p className="text-xs sm:text-sm text-slate-600 leading-relaxed max-w-sm mx-auto font-normal">
-                Your email address has been successfully confirmed. You now have full access to UG-PARK.
+                Your email address has been successfully confirmed. You now have full access to WELILE CAR HUB.
               </p>
             ) : (
               <div className="inline-block px-3 py-1 rounded-full bg-slate-100 text-slate-700 text-xs font-semibold font-mono">
@@ -354,7 +354,7 @@ export const ConfirmEmailPage: React.FC<ConfirmEmailPageProps> = ({
 
       {/* Bottom Footer Credits */}
       <div className="w-full max-w-xl text-center pb-2 text-2xs text-slate-500 font-medium">
-        UG-PARK Smart Mobility & System Services &bull; Powered by Supabase Auth
+        WELILE CAR HUB Smart Mobility & System Services &bull; Powered by Supabase Auth
       </div>
     </div>
   );

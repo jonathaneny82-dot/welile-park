@@ -545,7 +545,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin, onGoToConf
               </div>
               <div>
                 <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white">
-                  welile PARK
+                  WELILE CAR HUB
                 </h1>
                 <p className="text-xs text-slate-400 font-medium mt-1">
                   Select your portal to sign in
