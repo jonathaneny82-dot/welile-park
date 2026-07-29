@@ -369,7 +369,7 @@ const users: User[] = [
   {
     id: 'usr-2',
     name: 'Alex Mukasa',
-    email: 'alex.m@icpvsms.com',
+    email: 'alex.m@welilecarhub.com',
     phone: '+256 701 987654',
     role: UserRole.PARKING_ATTENDANT,
     createdAt: '2026-02-15T08:30:00Z',
@@ -380,7 +380,7 @@ const users: User[] = [
   {
     id: 'usr-3',
     name: 'Sarah Nakato',
-    email: 'sarah.n@icpvsms.com',
+    email: 'sarah.n@welilecarhub.com',
     phone: '+256 782 555111',
     role: UserRole.SERVICE_TECHNICIAN,
     createdAt: '2026-03-01T07:45:00Z',
@@ -391,7 +391,7 @@ const users: User[] = [
   {
     id: 'usr-4',
     name: 'Denis Okello',
-    email: 'denis.o@icpvsms.com',
+    email: 'denis.o@welilecarhub.com',
     phone: '+256 752 444333',
     role: UserRole.SERVICE_MANAGER,
     createdAt: '2026-01-20T09:00:00Z',
@@ -402,7 +402,7 @@ const users: User[] = [
   {
     id: 'usr-5',
     name: 'Grace Namubiru',
-    email: 'grace.admin@icpvsms.com',
+    email: 'grace.admin@welilecarhub.com',
     phone: '+256 700 111222',
     role: UserRole.ADMINISTRATOR,
     createdAt: '2025-12-01T08:00:00Z',
@@ -413,7 +413,7 @@ const users: User[] = [
   {
     id: 'usr-6',
     name: 'David Otim',
-    email: 'david.o@icpvsms.com',
+    email: 'david.o@welilecarhub.com',
     phone: '+256 788 333444',
     role: UserRole.SERVICE_TECHNICIAN,
     createdAt: '2026-03-10T08:00:00Z',
@@ -424,7 +424,7 @@ const users: User[] = [
   {
     id: 'usr-7',
     name: 'Paul Kato',
-    email: 'paul.k@icpvsms.com',
+    email: 'paul.k@welilecarhub.com',
     phone: '+256 777 888999',
     role: UserRole.SERVICE_TECHNICIAN,
     createdAt: '2026-04-01T08:00:00Z',

@@ -112,7 +112,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin, onGoToConf
             accentBg: 'bg-orange-500/15 text-orange-400 border-orange-500/30',
             btnBg: 'bg-orange-600 hover:bg-orange-500 text-white shadow-orange-950/40',
             subtitle: 'Single staff portal for operations',
-            defaultUserEmail: 'sarah.n@icpvsms.com',
+            defaultUserEmail: 'sarah.n@welilecarhub.com',
             defaultUserName: 'Sarah Nakato',
           };
         } else if (staffRoleIdentity === UserRole.PARKING_ATTENDANT) {
@@ -126,7 +126,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin, onGoToConf
             accentBg: 'bg-blue-500/15 text-blue-400 border-blue-500/30',
             btnBg: 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-950/40',
             subtitle: 'Single staff portal for operations',
-            defaultUserEmail: 'alex.m@icpvsms.com',
+            defaultUserEmail: 'alex.m@welilecarhub.com',
             defaultUserName: 'Alex Mukasa',
           };
         } else {
@@ -140,7 +140,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin, onGoToConf
             accentBg: 'bg-amber-500/15 text-amber-400 border-amber-500/30',
             btnBg: 'bg-amber-600 hover:bg-amber-500 text-white shadow-amber-950/40',
             subtitle: 'Single staff portal for operations',
-            defaultUserEmail: 'denis.o@icpvsms.com',
+            defaultUserEmail: 'denis.o@welilecarhub.com',
             defaultUserName: 'Denis Okello',
           };
         }
@@ -155,7 +155,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin, onGoToConf
           accentBg: 'bg-orange-500/15 text-orange-400 border-orange-500/30',
           btnBg: 'bg-orange-600 hover:bg-orange-500 text-white shadow-orange-950/40',
           subtitle: 'Assigned duties & service execution',
-          defaultUserEmail: 'sarah.n@icpvsms.com',
+          defaultUserEmail: 'sarah.n@welilecarhub.com',
           defaultUserName: 'Sarah Nakato',
         };
       case 'attendant':
@@ -169,7 +169,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin, onGoToConf
           accentBg: 'bg-blue-500/15 text-blue-400 border-blue-500/30',
           btnBg: 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-950/40',
           subtitle: 'Manage yard & scan tickets',
-          defaultUserEmail: 'alex.m@icpvsms.com',
+          defaultUserEmail: 'alex.m@welilecarhub.com',
           defaultUserName: 'Alex Mukasa',
         };
       case 'service_manager':
@@ -183,7 +183,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin, onGoToConf
           accentBg: 'bg-amber-500/15 text-amber-400 border-amber-500/30',
           btnBg: 'bg-amber-600 hover:bg-amber-500 text-white shadow-amber-950/40',
           subtitle: 'Oversee workshop repairs & staff roster',
-          defaultUserEmail: 'denis.o@icpvsms.com',
+          defaultUserEmail: 'denis.o@welilecarhub.com',
           defaultUserName: 'Denis Okello',
         };
       case 'admin':
@@ -197,7 +197,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin, onGoToConf
           accentBg: 'bg-purple-500/15 text-purple-400 border-purple-500/30',
           btnBg: 'bg-purple-600 hover:bg-purple-500 text-white shadow-purple-950/40',
           subtitle: 'Admin controls & analytics',
-          defaultUserEmail: 'grace.admin@icpvsms.com',
+          defaultUserEmail: 'grace.admin@welilecarhub.com',
           defaultUserName: 'Grace Namubiru',
         };
     }

@@ -90,7 +90,7 @@ export const sendReceiptEmail = async (to: string, data: ReceiptData): Promise<b
     throw new Error('Authentication token required. Please sign in with Google first.');
   }
 
-  const subject = `Receipt: Payment of UGX ${data.amount.toLocaleString()} Confirmed - ICPVSMS`;
+  const subject = `Receipt: Payment of UGX ${data.amount.toLocaleString()} Confirmed - WELILE CAR HUB`;
   const formattedAmount = `UGX ${data.amount.toLocaleString()}`;
   const formattedDate = new Date(data.date).toLocaleDateString([], {
     year: 'numeric',
@@ -204,7 +204,7 @@ export const sendReceiptEmail = async (to: string, data: ReceiptData): Promise<b
     <body>
       <div class="container">
         <div class="header">
-          <h1>ICPVSMS RECEIPT</h1>
+          <h1>WELILE CAR HUB RECEIPT</h1>
           <p>Integrated City Parking & Vehicle Service System</p>
         </div>
         <div class="content">
@@ -304,7 +304,7 @@ export const sendServiceBookingEmail = async (to: string, data: ServiceBookingDa
     throw new Error('Authentication token required. Please sign in with Google first.');
   }
 
-  const subject = `Booking Confirmed: Workshop Appointment for ${data.serviceType} - ICPVSMS`;
+  const subject = `Booking Confirmed: Workshop Appointment for ${data.serviceType} - WELILE CAR HUB`;
   const formattedAmount = `UGX ${data.cost.toLocaleString()}`;
   const formattedDate = new Date(data.bookingDate).toLocaleDateString([], {
     year: 'numeric',
@@ -453,7 +453,7 @@ export const sendServiceBookingEmail = async (to: string, data: ServiceBookingDa
           </p>
         </div>
         <div class="footer">
-          ICPVSMS Kampala City Smart Operations • Real-time IoT Enabled Services • Automated Ledger Dispatch
+          WELILE CAR HUB Smart Operations • Real-time IoT Enabled Services • Automated Ledger Dispatch
         </div>
       </div>
     </body>
@@ -509,7 +509,7 @@ export const sendServiceUpdateEmail = async (to: string, data: ServiceUpdateData
     throw new Error('Authentication token required. Please sign in with Google first.');
   }
 
-  const subject = `Service Update: ${data.vehicleDetails} is now [${data.status}] - ICPVSMS`;
+  const subject = `Service Update: ${data.vehicleDetails} is now [${data.status}] - WELILE CAR HUB`;
   const formattedAmount = `UGX ${data.cost.toLocaleString()}`;
 
   const htmlBody = `
@@ -659,7 +659,7 @@ export const sendServiceUpdateEmail = async (to: string, data: ServiceUpdateData
           </p>
         </div>
         <div class="footer">
-          ICPVSMS Kampala City Smart Operations • Real-time IoT Enabled Services • Automated Ledger Dispatch
+          WELILE CAR HUB Smart Operations • Real-time IoT Enabled Services • Automated Ledger Dispatch
         </div>
       </div>
     </body>
@@ -714,7 +714,7 @@ export const sendReminderEmail = async (to: string, data: ReminderData): Promise
     throw new Error('Authentication token required. Please sign in with Google first.');
   }
 
-  const subject = `Reminder: [${data.reminderType}] ${data.title} - ICPVSMS`;
+  const subject = `Reminder: [${data.reminderType}] ${data.title} - WELILE CAR HUB`;
 
   const htmlBody = `
     <!DOCTYPE html>
@@ -843,7 +843,7 @@ export const sendReminderEmail = async (to: string, data: ReminderData): Promise
           </p>
         </div>
         <div class="footer">
-          ICPVSMS Kampala City Smart Operations • Real-time IoT Enabled Services • Automated Ledger Dispatch
+          WELILE CAR HUB Smart Operations • Real-time IoT Enabled Services • Automated Ledger Dispatch
         </div>
       </div>
     </body>

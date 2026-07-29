@@ -680,7 +680,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                               required
                               value={newStaffEmail}
                               onChange={(e) => setNewStaffEmail(e.target.value)}
-                              placeholder="peter.s@icpvsms.com"
+                              placeholder="peter.s@welilecarhub.com"
                               className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2 text-xs text-slate-900 outline-none focus:border-indigo-500"
                             />
                           </div>
