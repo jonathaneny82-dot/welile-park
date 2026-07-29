@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { UserRole, User, Vehicle, ParkingSpace, ParkingReservation, VehicleService, InventoryItem, Payment } from './types';
 import { Dashboard } from './components/Dashboard';
 import { LoginPage } from './components/LoginPage';
+import { ConfirmEmailPage } from './components/ConfirmEmailPage';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
@@ -25,6 +26,22 @@ export default function App() {
   });
 
   const [showLoginPage, setShowLoginPage] = useState<boolean>(() => !localStorage.getItem('ugpark_current_user'));
+
+  // Dedicated Confirm Email Page state
+  const [showConfirmPage, setShowConfirmPage] = useState<boolean>(() => {
+    const path = window.location.pathname;
+    const search = window.location.search;
+    const hash = window.location.hash;
+    return (
+      path === '/confirm-email' ||
+      search.includes('confirm=') ||
+      search.includes('token=') ||
+      search.includes('code=') ||
+      search.includes('token_hash=') ||
+      hash.includes('access_token') ||
+      hash.includes('type=signup')
+    );
+  });
 
   const [users, setUsers] = useState<User[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
@@ -167,6 +184,7 @@ export default function App() {
     setCurrentUser(user);
     setCurrentRole(user.role);
     setShowLoginPage(false);
+    setShowConfirmPage(false);
     setNotifications([]); // Clear any old notifications on new user login
     
     // Optimistically update local users state so it's instantly reflected
@@ -181,12 +199,25 @@ export default function App() {
     fetchAllData();
   };
 
+  if (showConfirmPage) {
+    return (
+      <ConfirmEmailPage
+        onConfirmSuccess={handleLoginSuccess}
+        onGoToLogin={() => {
+          setShowConfirmPage(false);
+          setShowLoginPage(true);
+        }}
+      />
+    );
+  }
+
   if (showLoginPage || !currentUser) {
     return (
       <LoginPage
         currentUser={currentUser}
         users={users}
         onLogin={handleLoginSuccess}
+        onGoToConfirmEmail={() => setShowConfirmPage(true)}
         onCancel={currentUser ? () => setShowLoginPage(false) : undefined}
       />
     );

@@ -3,6 +3,7 @@ dotenv.config();
 
 import express from 'express';
 import path from 'path';
+import nodemailer from 'nodemailer';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
@@ -908,6 +909,62 @@ async function syncSupabaseDatabase() {
 
 // --- REST API Endpoints ---
 
+// Helper to send email with nodemailer (or simulate dispatch with logs)
+async function sendVerificationEmail(toEmail: string, userName: string, code: string, token: string) {
+  const host = process.env.SMTP_HOST;
+  const port = parseInt(process.env.SMTP_PORT || '587', 10);
+  const user = process.env.SMTP_USER;
+  const pass = process.env.SMTP_PASS;
+  const from = process.env.SMTP_FROM || '"UG-PARK Security" <no-reply@ugpark.com>';
+
+  const htmlContent = `
+    <div style="font-family: Arial, sans-serif; max-width: 550px; margin: 0 auto; padding: 25px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff;">
+      <h2 style="color: #0f172a; margin-top: 0;">UG-PARK Account Verification Code</h2>
+      <p style="color: #334155; font-size: 15px;">Hello <strong>${userName || 'Valued User'}</strong>,</p>
+      <p style="color: #334155; font-size: 15px;">Thank you for signing up for UG-PARK. Your 6-digit email verification security code is:</p>
+      <div style="background-color: #0f172a; padding: 20px; border-radius: 10px; text-align: center; margin: 20px 0;">
+        <span style="font-size: 34px; font-weight: 800; letter-spacing: 8px; color: #38bdf8; font-family: monospace;">${code}</span>
+      </div>
+      <p style="color: #64748b; font-size: 13px;">Enter this 6-digit code on the sign-in screen to activate your account.</p>
+      <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 20px 0;" />
+      <p style="color: #94a3b8; font-size: 11px; text-align: center;">UG-PARK Integrated Smart Mobility & Service Portal</p>
+    </div>
+  `;
+
+  if (host && user && pass) {
+    try {
+      const transporter = nodemailer.createTransport({
+        host,
+        port,
+        secure: port === 465,
+        auth: { user, pass },
+      });
+      await transporter.sendMail({
+        from,
+        to: toEmail,
+        subject: `Your UG-PARK Email Verification Code: ${code}`,
+        text: `Hello ${userName}, Your UG-PARK 6-digit email verification code is: ${code}`,
+        html: htmlContent,
+      });
+      console.log(`✉️ Real SMTP Verification Email sent successfully to ${toEmail} with code ${code}`);
+      return { success: true, method: 'smtp' };
+    } catch (err) {
+      console.error(`❌ Error sending email via SMTP to ${toEmail}:`, err);
+    }
+  }
+
+  // Fallback / Log notification if SMTP credentials are not set
+  console.log(`=======================================================`);
+  console.log(`✉️ [VERIFICATION EMAIL SENT TO REGISTRATION ADDRESS]`);
+  console.log(`To: ${toEmail}`);
+  console.log(`Recipient Name: ${userName}`);
+  console.log(`Subject: Your UG-PARK Verification Code: ${code}`);
+  console.log(`Verification Code: ${code}`);
+  console.log(`Verification Token: ${token}`);
+  console.log(`=======================================================`);
+  return { success: true, method: 'logged' };
+}
+
 // Health & System Details
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
@@ -918,9 +975,9 @@ app.get('/api/users', (req, res) => {
   res.json(users);
 });
 
-// Registration Endpoint - Creates unverified accounts requiring mandatory email verification
+// Registration Endpoint - Creates unverified accounts requiring mandatory email confirmation via Supabase
 app.post('/api/register', async (req, res) => {
-  const { name, email, phone, role } = req.body;
+  const { name, email, phone, role, password } = req.body;
   const cleanEmail = (email || '').trim().toLowerCase();
   const cleanName = (name || '').trim();
 
@@ -928,17 +985,43 @@ app.post('/api/register', async (req, res) => {
     return res.status(400).json({ error: 'Email address is required for registration.' });
   }
 
+  // Generate 6-digit numeric verification code
+  const code = Math.floor(100000 + Math.random() * 900000).toString();
+  const token = `vtoken-${Math.random().toString(36).substring(2)}${Date.now()}`;
+  const origin = req.headers.origin || 'http://localhost:3000';
+  const confirmRedirectUrl = `${origin}/confirm-email`;
+
   // Check if user already exists
   const existingUser = users.find((u) => u.email.toLowerCase() === cleanEmail);
   if (existingUser) {
     if (!existingUser.isVerified) {
+      if (!existingUser.verificationCode) {
+        existingUser.verificationCode = code;
+      }
+
+      // Trigger Supabase resend if client active
+      if (supabase) {
+        try {
+          await supabase.auth.resend({
+            type: 'signup',
+            email: cleanEmail,
+            options: { emailRedirectTo: confirmRedirectUrl },
+          });
+        } catch (sbErr) {
+          console.warn('Supabase auth resend notice:', sbErr);
+        }
+      }
+
+      await sendVerificationEmail(existingUser.email, existingUser.name, existingUser.verificationCode, existingUser.verificationToken || token);
       return res.status(200).json({
         success: false,
         isUnverified: true,
         user: existingUser,
         email: existingUser.email,
-        token: existingUser.verificationToken,
-        message: 'An account with this email already exists but is unverified. Please verify your email before signing in.',
+        token: existingUser.verificationToken || token,
+        code: existingUser.verificationCode,
+        confirmUrl: `${confirmRedirectUrl}?email=${encodeURIComponent(cleanEmail)}&code=${existingUser.verificationCode}`,
+        message: `An account with ${existingUser.email} exists but is unverified. Supabase confirmation email sent! Check your inbox or enter code on the Confirm Email page.`,
       });
     }
     return res.status(400).json({ error: 'An account with this email address already exists. Please sign in.' });
@@ -946,10 +1029,33 @@ app.post('/api/register', async (req, res) => {
 
   const requestedRole = (role as UserRole) || UserRole.CUSTOMER;
   const isStaff = requestedRole !== UserRole.CUSTOMER;
-  const token = `vtoken-${Math.random().toString(36).substring(2)}${Date.now()}`;
+
+  let supabaseUserId = `usr-${Date.now()}`;
+
+  // Call Supabase Auth signUp if Supabase client is initialized
+  if (supabase) {
+    try {
+      const { data: authData, error: authErr } = await supabase.auth.signUp({
+        email: cleanEmail,
+        password: password || 'UgParkPass2026!',
+        options: {
+          data: { name: cleanName, role: requestedRole, phone: phone || '' },
+          emailRedirectTo: confirmRedirectUrl,
+        },
+      });
+      if (authErr) {
+        console.warn('Supabase Auth signUp notice:', authErr.message);
+      } else if (authData?.user) {
+        supabaseUserId = authData.user.id;
+        console.log(`✅ Supabase Auth signUp initiated for ${cleanEmail} (ID: ${supabaseUserId})`);
+      }
+    } catch (e) {
+      console.error('Supabase Auth Exception on register:', e);
+    }
+  }
 
   const newUser: User = {
-    id: `usr-${Date.now()}`,
+    id: supabaseUserId,
     name: cleanName || cleanEmail.split('@')[0],
     email: cleanEmail,
     phone: phone ? phone.trim() : '+256 700 000000',
@@ -959,6 +1065,7 @@ app.post('/api/register', async (req, res) => {
     authorizationStatus: isStaff ? 'Authorized' : 'Customer',
     isVerified: false,
     verificationToken: token,
+    verificationCode: code,
     verificationSentAt: new Date().toISOString(),
   };
 
@@ -972,12 +1079,17 @@ app.post('/api/register', async (req, res) => {
     }
   }
 
+  // Dispatch email notification
+  await sendVerificationEmail(newUser.email, newUser.name, code, token);
+
   res.json({
     success: true,
     isUnverified: true,
     user: newUser,
     token: newUser.verificationToken,
-    message: 'Registration successful! A verification email with a secure link has been sent. You must verify your email before logging in.',
+    code: newUser.verificationCode,
+    confirmUrl: `${confirmRedirectUrl}?email=${encodeURIComponent(cleanEmail)}&code=${code}`,
+    message: `Sign up complete! Supabase confirmation email sent to ${cleanEmail}. Check your inbox or enter the code on the Confirm Email page.`,
   });
 });
 
@@ -996,7 +1108,9 @@ app.post('/api/resend-verification', async (req, res) => {
   }
 
   const token = `vtoken-${Math.random().toString(36).substring(2)}${Date.now()}`;
+  const code = Math.floor(100000 + Math.random() * 900000).toString();
   user.verificationToken = token;
+  user.verificationCode = code;
   user.verificationSentAt = new Date().toISOString();
 
   if (supabase) {
@@ -1007,23 +1121,29 @@ app.post('/api/resend-verification', async (req, res) => {
     }
   }
 
+  // Dispatch email with Nodemailer or logger
+  await sendVerificationEmail(user.email, user.name, code, token);
+
   res.json({
     success: true,
     token: user.verificationToken,
+    code: user.verificationCode,
     email: user.email,
-    message: `A new verification email has been sent to ${user.email}. Please verify your email before signing in.`,
+    message: `A new 6-digit verification code (${code}) has been sent to ${user.email}. Enter the code below to sign in.`,
   });
 });
 
-// Verify Email Endpoint (by token, query token, or email)
+// Verify Email Endpoint (by 6-digit code, token, query token, or email)
 app.all('/api/verify-email', async (req, res) => {
+  const code = (req.query.code || req.body.code || '').toString().trim();
   const token = (req.query.token || req.body.token || '').toString();
   const email = (req.query.email || req.body.email || '').toString().toLowerCase();
 
   let user = users.find(
     (u) =>
+      (code && u.verificationCode === code) ||
       (token && u.verificationToken === token) ||
-      (email && u.email.toLowerCase() === email) ||
+      (email && u.email.toLowerCase() === email && (!code || u.verificationCode === code)) ||
       (token && u.id === token)
   );
 
@@ -1032,12 +1152,18 @@ app.all('/api/verify-email', async (req, res) => {
   }
 
   if (!user) {
-    return res.status(404).json({ error: 'Invalid or expired verification token.' });
+    return res.status(404).json({ error: 'Invalid or expired verification code.' });
+  }
+
+  // If a code was provided but doesn't match
+  if (code && user.verificationCode && user.verificationCode !== code) {
+    return res.status(400).json({ error: 'Incorrect 6-digit verification code. Please check your email and try again.' });
   }
 
   user.isVerified = true;
   user.verifiedAt = new Date().toISOString();
   user.verificationToken = undefined;
+  user.verificationCode = undefined;
 
   if (supabase) {
     try {

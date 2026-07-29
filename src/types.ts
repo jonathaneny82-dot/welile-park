@@ -17,6 +17,7 @@ export interface User {
   authorizationStatus?: 'Authorized' | 'Pending Approval' | 'Customer';
   isVerified?: boolean;
   verificationToken?: string;
+  verificationCode?: string;
   verificationSentAt?: string;
   verifiedAt?: string;
 }

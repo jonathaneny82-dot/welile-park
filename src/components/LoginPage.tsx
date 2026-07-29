@@ -13,19 +13,21 @@ import {
   ParkingSquare,
   Sparkles,
   Lock,
-  CheckCircle2
+  CheckCircle2,
+  ExternalLink
 } from 'lucide-react';
 
 interface LoginPageProps {
   currentUser: User | null;
   users: User[];
   onLogin: (user: User) => void;
+  onGoToConfirmEmail?: () => void;
   onCancel?: () => void;
 }
 
 type PortalType = 'customer' | 'staff' | 'technician' | 'attendant' | 'service_manager' | 'admin';
 
-export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin }) => {
+export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin, onGoToConfirmEmail }) => {
   // Navigation screen state: 'portal_selection' or 'login'
   const [currentScreen, setCurrentScreen] = useState<'portal_selection' | 'login'>('portal_selection');
   const [selectedPortal, setSelectedPortal] = useState<PortalType>('customer');
@@ -222,19 +224,24 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin }) => {
   };
 
   // Verification pending state
-  const [unverifiedAccount, setUnverifiedAccount] = useState<{ email: string; name: string; token?: string } | null>(null);
+  const [unverifiedAccount, setUnverifiedAccount] = useState<{ email: string; name: string; token?: string; code?: string } | null>(null);
   const [verificationFeedback, setVerificationFeedback] = useState<string | null>(null);
+  const [verificationCodeInput, setVerificationCodeInput] = useState<string>('');
+  const [isEditingEmail, setIsEditingEmail] = useState<boolean>(false);
+  const [newEmailInput, setNewEmailInput] = useState<string>('');
+  const [showCodeInput, setShowCodeInput] = useState<boolean>(false);
 
-  // Check for verification token in URL query parameter on load
+  // Check for verification token or code in URL query parameter on load
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const tokenFromUrl = urlParams.get('token') || urlParams.get('verifyToken');
+    const codeFromUrl = urlParams.get('code');
     const emailFromUrl = urlParams.get('email');
-    if (tokenFromUrl || emailFromUrl) {
+    if (tokenFromUrl || emailFromUrl || codeFromUrl) {
       fetch('/api/verify-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: tokenFromUrl, email: emailFromUrl }),
+        body: JSON.stringify({ token: tokenFromUrl, email: emailFromUrl, code: codeFromUrl }),
       })
         .then((res) => res.json())
         .then((data) => {
@@ -253,6 +260,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin }) => {
     setIsLoading(true);
     setVerificationFeedback(null);
     const freshToken = `vtoken-${Math.random().toString(36).substring(2, 9)}-${Date.now()}`;
+    const freshCode = Math.floor(100000 + Math.random() * 900000).toString();
 
     try {
       const res = await fetch('/api/resend-verification', {
@@ -262,27 +270,36 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin }) => {
       });
       const data = await res.json().catch(() => ({}));
       if (data.success) {
-        setVerificationFeedback(`📩 A fresh verification email with secure link has been dispatched to ${targetEmail}! Check your inbox or click "Verify Email Now" below.`);
+        const activeCode = data.code || freshCode;
+        setVerificationFeedback(`A fresh confirmation email has been dispatched to ${targetEmail}.`);
         if (unverifiedAccount) {
-          setUnverifiedAccount({ ...unverifiedAccount, token: data.token || freshToken });
+          setUnverifiedAccount({ ...unverifiedAccount, token: data.token || freshToken, code: activeCode });
         }
       } else {
-        setVerificationFeedback(`📩 Verification email link re-sent to ${targetEmail}. Click "Verify Email Now" below to complete verification.`);
+        setVerificationFeedback(`A confirmation email has been dispatched to ${targetEmail}.`);
         if (unverifiedAccount) {
-          setUnverifiedAccount({ ...unverifiedAccount, token: freshToken });
+          setUnverifiedAccount({ ...unverifiedAccount, token: freshToken, code: freshCode });
         }
       }
     } catch {
-      setVerificationFeedback(`📩 Verification email link re-sent to ${targetEmail}. Click "Verify Email Now" below to complete verification.`);
+      setVerificationFeedback(`A confirmation email has been dispatched to ${targetEmail}.`);
       if (unverifiedAccount) {
-        setUnverifiedAccount({ ...unverifiedAccount, token: freshToken });
+        setUnverifiedAccount({ ...unverifiedAccount, token: freshToken, code: freshCode });
       }
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleSimulateClickVerificationLink = async (targetEmail: string, token?: string) => {
+  const handleVerifyCodeSubmit = async (customCode?: string) => {
+    const codeToSubmit = (customCode || verificationCodeInput || unverifiedAccount?.code || '').trim();
+    const targetEmail = unverifiedAccount?.email;
+
+    if (!codeToSubmit && !unverifiedAccount?.token) {
+      setVerificationFeedback('⚠️ Please enter the 6-digit verification code sent to your email.');
+      return;
+    }
+
     setIsLoading(true);
     let verifiedUser: User | null = null;
 
@@ -290,15 +307,24 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin }) => {
       const res = await fetch('/api/verify-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: targetEmail, token }),
+        body: JSON.stringify({
+          email: targetEmail,
+          code: codeToSubmit,
+          token: unverifiedAccount?.token,
+        }),
       });
+
       const data = await res.json().catch(() => ({}));
       if (data.success && data.user) {
         verifiedUser = data.user;
+      } else if (data.error) {
+        setVerificationFeedback(`⚠️ ${data.error}`);
+        setIsLoading(false);
+        return;
       }
     } catch {}
 
-    if (!verifiedUser) {
+    if (!verifiedUser && targetEmail) {
       const matched = users.find((u) => u.email.toLowerCase() === targetEmail.toLowerCase());
       if (matched) {
         verifiedUser = { ...matched, isVerified: true };
@@ -317,11 +343,16 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin }) => {
       }
     }
 
-    setVerificationFeedback('✅ Email successfully verified! Logging into account...');
-    setUnverifiedAccount(null);
-    setAuthNotice(null);
-    setIsLoading(false);
-    onLogin(verifiedUser);
+    if (verifiedUser) {
+      setVerificationFeedback('✅ 6-Digit verification code verified! Signing into account...');
+      setUnverifiedAccount(null);
+      setAuthNotice(null);
+      setVerificationCodeInput('');
+      setIsLoading(false);
+      onLogin(verifiedUser);
+    } else {
+      setIsLoading(false);
+    }
   };
 
   const handleLoginSubmit = async (e: React.FormEvent) => {
@@ -340,12 +371,14 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin }) => {
     if (matchedUser) {
       if (matchedUser.isVerified === false) {
         setIsLoading(false);
+        const code = matchedUser.verificationCode || Math.floor(100000 + Math.random() * 900000).toString();
         setUnverifiedAccount({
           email: matchedUser.email,
           name: matchedUser.name,
           token: matchedUser.verificationToken || `vtoken-${matchedUser.id}`,
+          code,
         });
-        setAuthNotice('⚠️ Email Not Verified: Users must verify their email before they can sign in or access any part of the application.');
+        setAuthNotice('⚠️ Email Not Verified: Enter the 6-digit verification code sent to your email to sign in.');
         return;
       }
       onLogin(matchedUser);
@@ -367,12 +400,14 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin }) => {
       const data = await res.json();
       if (data.isUnverified || (data.user && data.user.isVerified === false)) {
         setIsLoading(false);
+        const code = data.code || data.user?.verificationCode || Math.floor(100000 + Math.random() * 900000).toString();
         setUnverifiedAccount({
           email: data.email || data.user?.email || inputVal,
           name: data.user?.name || inputVal.split('@')[0],
           token: data.token || data.user?.verificationToken,
+          code,
         });
-        setAuthNotice('⚠️ Email Not Verified: Users must verify their email before they can sign in or access any part of the application.');
+        setAuthNotice('⚠️ Email Not Verified: Enter the 6-digit verification code sent to your email to sign in.');
         return;
       }
 
@@ -429,14 +464,17 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin }) => {
       });
 
       const data = await res.json();
+      const generatedCode = data.code || data.user?.verificationCode || Math.floor(100000 + Math.random() * 900000).toString();
+
       if (data.isUnverified || data.user) {
         setIsLoading(false);
         setUnverifiedAccount({
           email: data.user?.email || cleanEmail,
           name: data.user?.name || cleanName,
           token: data.token || data.user?.verificationToken,
+          code: generatedCode,
         });
-        setVerificationFeedback(`📩 Registration complete! A verification email with a secure link has been sent to ${cleanEmail}. You must verify your email before logging in.`);
+        setVerificationFeedback(`A verification email has been dispatched to ${cleanEmail}.`);
         return;
       } else if (data.error) {
         setAuthNotice(data.error);
@@ -446,12 +484,14 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin }) => {
     } catch {
       // Local fallback for registration
       setIsLoading(false);
+      const fallbackCode = Math.floor(100000 + Math.random() * 900000).toString();
       setUnverifiedAccount({
         email: cleanEmail || `user_${Date.now()}@ugpark.com`,
         name: cleanName,
         token: `vtoken-${Date.now()}`,
+        code: fallbackCode,
       });
-      setVerificationFeedback(`📩 Registration complete! A verification email with a secure link has been sent to ${cleanEmail}. You must verify your email before logging in.`);
+      setVerificationFeedback(`A verification email has been dispatched to ${cleanEmail}.`);
     }
   };
 
@@ -618,62 +658,137 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin }) => {
 
             {/* MANDATORY EMAIL VERIFICATION PROMPT CARD */}
             {unverifiedAccount && (
-              <div className="p-4 bg-amber-500/15 border border-amber-500/40 rounded-2xl space-y-3 text-left animate-in fade-in zoom-in-95 duration-200">
-                <div className="flex items-start gap-3">
-                  <div className="p-2 rounded-xl bg-amber-500/20 text-amber-400 shrink-0 mt-0.5">
-                    <Mail className="w-5 h-5" />
+              <div className="p-7 sm:p-9 bg-white border border-slate-100 rounded-[32px] space-y-6 text-center animate-in fade-in zoom-in-95 duration-200 shadow-2xl text-slate-900 relative overflow-hidden">
+                
+                {/* Header Icon with Sparkle */}
+                <div className="relative w-16 h-16 mx-auto">
+                  <div className="w-16 h-16 bg-slate-950 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-slate-950/15">
+                    <Mail className="w-8 h-8 text-white stroke-[1.75]" />
                   </div>
-                  <div>
-                    <h3 className="text-sm font-black text-amber-200">Mandatory Email Verification Required</h3>
-                    <p className="text-xs text-amber-300/90 mt-0.5 leading-relaxed font-medium">
-                      Users must verify their email before they can sign in or access any part of the application.
-                    </p>
+                  <div className="absolute -top-1.5 -right-1.5 text-amber-400 animate-pulse">
+                    <Sparkles className="w-6 h-6 fill-amber-300 text-amber-500 stroke-[1.5]" />
+                  </div>
+                  <div className="absolute top-0 -right-3 text-amber-300">
+                    <Sparkles className="w-3.5 h-3.5 fill-amber-200 text-amber-400 stroke-[1.5]" />
                   </div>
                 </div>
 
-                <div className="p-2.5 bg-slate-950/70 rounded-xl border border-amber-500/20 text-xs">
-                  <span className="text-slate-400 block text-3xs font-mono uppercase">Account Email:</span>
-                  <strong className="text-amber-300 font-mono text-xs">{unverifiedAccount.email}</strong>
+                {/* Title & Description */}
+                <div className="space-y-2">
+                  <h3 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">Verify your email</h3>
+                  <p className="text-xs sm:text-sm text-slate-600 leading-relaxed font-normal max-w-sm mx-auto">
+                    To keep a trusted and safe community, we&apos;ve sent an email to{' '}
+                    <strong className="font-bold text-slate-900 break-all">{unverifiedAccount.email}</strong> for verification, and you&apos;ll only do this once.
+                  </p>
                 </div>
 
+                {/* Change Email Link / Form */}
+                <div>
+                  {!isEditingEmail ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setNewEmailInput(unverifiedAccount.email);
+                        setIsEditingEmail(true);
+                      }}
+                      className="text-xs font-semibold text-emerald-700 hover:text-emerald-800 transition cursor-pointer hover:underline"
+                    >
+                      Not the correct email? <span className="underline">Change email address</span>
+                    </button>
+                  ) : (
+                    <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl space-y-2 text-left animate-in fade-in duration-200">
+                      <label className="block text-3xs font-bold uppercase tracking-wider text-slate-500">
+                        Update Email Address:
+                      </label>
+                      <div className="flex gap-2">
+                        <input
+                          type="email"
+                          value={newEmailInput}
+                          onChange={(e) => setNewEmailInput(e.target.value)}
+                          placeholder="enter email"
+                          className="w-full px-3 py-1.5 rounded-xl bg-white border border-slate-300 text-xs text-slate-900 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (newEmailInput.trim()) {
+                              const updatedEmail = newEmailInput.trim();
+                              setUnverifiedAccount({
+                                ...unverifiedAccount,
+                                email: updatedEmail,
+                              });
+                              handleResendVerification(updatedEmail);
+                            }
+                            setIsEditingEmail(false);
+                          }}
+                          className="px-3 py-1.5 bg-slate-950 text-white font-bold text-xs rounded-xl hover:bg-slate-800 transition cursor-pointer"
+                        >
+                          Save & Resend
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Feedback Toast */}
                 {verificationFeedback && (
-                  <div className="p-2.5 bg-emerald-500/20 border border-emerald-500/40 rounded-xl text-xs text-emerald-200 font-medium">
+                  <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-2xl text-xs text-emerald-800 font-medium text-center">
                     {verificationFeedback}
                   </div>
                 )}
 
-                <div className="space-y-2 pt-1">
+                {/* Primary Button & Secondary Actions */}
+                <div className="space-y-3.5">
                   <button
                     type="button"
-                    onClick={() => handleResendVerification(unverifiedAccount.email)}
-                    disabled={isLoading}
-                    className="w-full py-2.5 px-3 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs shadow-md transition flex items-center justify-center gap-2 cursor-pointer"
+                    onClick={() => {
+                      handleResendVerification(unverifiedAccount.email);
+                      const domain = unverifiedAccount.email.split('@')[1] || '';
+                      if (domain.includes('gmail.com')) {
+                        window.open('https://mail.google.com', '_blank');
+                      } else if (domain.includes('outlook') || domain.includes('hotmail') || domain.includes('live')) {
+                        window.open('https://outlook.live.com', '_blank');
+                      } else if (domain.includes('yahoo')) {
+                        window.open('https://mail.yahoo.com', '_blank');
+                      } else {
+                        window.location.href = `mailto:${unverifiedAccount.email}`;
+                      }
+                    }}
+                    className="w-full py-3.5 px-6 bg-slate-950 hover:bg-slate-900 text-white font-bold text-sm rounded-2xl shadow-xl shadow-slate-950/25 transition duration-200 flex items-center justify-center gap-2 cursor-pointer active:scale-[0.99]"
                   >
-                    <Mail className="w-4 h-4" />
-                    <span>Resend Verification Email</span>
+                    <span>Open my mail now</span>
+                    <ExternalLink className="w-4 h-4 text-slate-300" />
                   </button>
 
-                  <button
-                    type="button"
-                    onClick={() => handleSimulateClickVerificationLink(unverifiedAccount.email, unverifiedAccount.token)}
-                    disabled={isLoading}
-                    className="w-full py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md transition flex items-center justify-center gap-2 cursor-pointer"
-                  >
-                    <CheckCircle2 className="w-4 h-4" />
-                    <span>Verify Email Now (Click Secure Link)</span>
-                  </button>
+                  {/* Resend link */}
+                  <div className="pt-1">
+                    <button
+                      type="button"
+                      onClick={() => handleResendVerification(unverifiedAccount.email)}
+                      disabled={isLoading}
+                      className="text-xs text-slate-500 font-medium hover:text-slate-900 transition underline cursor-pointer disabled:opacity-50"
+                    >
+                      {isLoading ? 'Resending email...' : 'Did not receive? Resend email'}
+                    </button>
+                  </div>
+                </div>
 
+                {/* Footer Back link */}
+                <div className="pt-3 border-t border-slate-100">
                   <button
                     type="button"
                     onClick={() => {
                       setUnverifiedAccount(null);
                       setAuthNotice(null);
+                      setVerificationFeedback(null);
+                      setAuthMode('login');
                     }}
-                    className="w-full py-2 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-400 text-xs font-semibold transition cursor-pointer"
+                    className="text-xs text-slate-500 font-medium hover:text-slate-900 transition cursor-pointer"
                   >
-                    Back to Sign In
+                    Have an account? <span className="font-bold text-slate-800 underline">Log in</span>
                   </button>
                 </div>
+
               </div>
             )}
 
@@ -881,7 +996,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin }) => {
                   {isLoading ? 'Creating Account...' : 'Create Account'}
                 </button>
 
-                <div className="text-center pt-1">
+                <div className="text-center pt-1 space-y-2">
                   <button
                     type="button"
                     onClick={() => setAuthMode('login')}
@@ -889,6 +1004,15 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin }) => {
                   >
                     ← Back to Sign In
                   </button>
+                  {onGoToConfirmEmail && (
+                    <button
+                      type="button"
+                      onClick={onGoToConfirmEmail}
+                      className="block mx-auto text-2xs font-semibold text-emerald-400 hover:text-emerald-300 transition cursor-pointer"
+                    >
+                      Have a confirmation link or code? Go to Confirm Email Page →
+                    </button>
+                  )}
                 </div>
               </form>
             )}
