@@ -52,6 +52,21 @@ import {
 } from '../lib/gmail';
 import { User as FirebaseUser } from 'firebase/auth';
 
+function toUuid(id: string | null | undefined): string | null {
+  if (!id) return null;
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (uuidRegex.test(id)) return id;
+
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) {
+    hash = (hash << 5) - hash + id.charCodeAt(i);
+    hash |= 0;
+  }
+  const hex = Math.abs(hash).toString(16).padStart(8, '0');
+  const hex32 = (hex + hex + hex + hex).slice(0, 32);
+  return `${hex32.slice(0, 8)}-${hex32.slice(8, 12)}-4${hex32.slice(13, 16)}-a${hex32.slice(17, 20)}-${hex32.slice(20, 32)}`;
+}
+
 // Registered Location Yards Data around the Country (Uganda)
 export interface LocationYard {
   id: string;
@@ -337,26 +352,34 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
   // Primary active user state
   const userName = currentUser?.name || 'Customer';
 
-  // Customer's registered vehicles - strictly filtered for current logged in user
-  const myVehicles = vehicles.filter(
-    (v) => v.userId === userId || v.userId === currentUser?.id || (currentUser?.email && v.userId === currentUser.email)
-  );
+  // Customer's registered vehicles - filtered for current logged in user with UUID tolerance
+  const myVehicles = useMemo(() => {
+    return vehicles.filter((v) => {
+      if (!v) return false;
+      if (v.userId === userId || v.userId === currentUser?.id) return true;
+      if (currentUser?.email && (v.userId === currentUser.email || v.userId.toLowerCase() === currentUser.email.toLowerCase())) return true;
+      if (toUuid(v.userId) === toUuid(userId) || toUuid(v.userId) === toUuid(currentUser?.id)) return true;
+      return false;
+    });
+  }, [vehicles, userId, currentUser]);
 
   const [selectedVehicleId, setSelectedVehicleId] = useState<string>('');
 
   useEffect(() => {
-    if (myVehicles.length > 0 && !selectedVehicleId) {
+    if (myVehicles.length > 0 && (!selectedVehicleId || !myVehicles.some(v => v.id === selectedVehicleId || toUuid(v.id) === toUuid(selectedVehicleId)))) {
       setSelectedVehicleId(myVehicles[0].id);
     }
   }, [myVehicles]);
 
-  const activeVehicle = myVehicles.find((v) => v.id === selectedVehicleId) || myVehicles[0] || null;
+  const activeVehicle = myVehicles.find((v) => v.id === selectedVehicleId || toUuid(v.id) === toUuid(selectedVehicleId)) || myVehicles[0] || null;
 
   // Customer's active parking reservations
   const myReservations = useMemo(() => {
-    return reservations.filter(
-      (r) => r.userId === userId || r.userId === currentUser?.id || myVehicles.some((v) => v.id === r.vehicleId)
-    );
+    return reservations.filter((r) => {
+      if (!r) return false;
+      if (r.userId === userId || r.userId === currentUser?.id || toUuid(r.userId) === toUuid(userId) || toUuid(r.userId) === toUuid(currentUser?.id)) return true;
+      return myVehicles.some((v) => v.id === r.vehicleId || toUuid(v.id) === toUuid(r.vehicleId));
+    });
   }, [reservations, userId, currentUser, myVehicles]);
 
   const activeReservation = useMemo(() => {
@@ -516,6 +539,55 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
     } catch (err) {
       console.error(err);
       alert('Failed to connect to server to unselect service.');
+    }
+  };
+
+  // Delete vehicle action
+  const handleDeleteVehicle = async (vehId: string, regNo: string) => {
+    if (!window.confirm(`Are you sure you want to delete vehicle ${regNo} from your account?`)) return;
+    try {
+      const res = await fetch(`/api/vehicles/${vehId}`, {
+        method: 'DELETE',
+      });
+      if (res.ok) {
+        setServiceNotificationBanner({
+          type: 'info',
+          message: `🗑️ Vehicle ${regNo} deleted successfully.`,
+        });
+        onRefreshAll();
+        if (selectedVehicleId === vehId || toUuid(selectedVehicleId) === toUuid(vehId)) {
+          const remaining = myVehicles.filter(v => v.id !== vehId);
+          setSelectedVehicleId(remaining[0]?.id || '');
+        }
+        setTimeout(() => setServiceNotificationBanner(null), 4000);
+      } else {
+        alert('Failed to delete vehicle.');
+      }
+    } catch (err) {
+      console.error('Delete vehicle exception:', err);
+      alert('Failed to delete vehicle.');
+    }
+  };
+
+  // Unselect / Cancel Parking Reservation
+  const handleUnselectReservation = async (resId: string, resTitle?: string) => {
+    try {
+      const res = await fetch(`/api/parking/reservations/${resId}/cancel`, {
+        method: 'POST',
+      });
+      if (res.ok) {
+        setServiceNotificationBanner({
+          type: 'info',
+          message: `❌ Parking Reservation "${resTitle || 'Spot'}" unselected and cancelled.`,
+        });
+        onRefreshAll();
+        setTimeout(() => setServiceNotificationBanner(null), 5000);
+      } else {
+        alert('Could not cancel reservation.');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Failed to connect to server.');
     }
   };
 
@@ -703,21 +775,15 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
   const [newModel, setNewModel] = useState<string>('');
   const [newYear, setNewYear] = useState<string>('2020');
 
-  // Car Problem & Services Request during Vehicle Registration
-  const [reqOilChangeOnReg, setReqOilChangeOnReg] = useState<boolean>(true);
-  const [reqCarWashOnReg, setReqCarWashOnReg] = useState<boolean>(true);
-  const [reqParkingOnReg, setReqParkingOnReg] = useState<boolean>(true);
-  const [reqEvChargingOnReg, setReqEvChargingOnReg] = useState<boolean>(false);
-  const [reqGarageServiceOnReg, setReqGarageServiceOnReg] = useState<boolean>(false);
-  const [carProblemTypeOnReg, setCarProblemTypeOnReg] = useState<string>('Engine / Mechanical Repair');
-  const [carProblemNotesOnReg, setCarProblemNotesOnReg] = useState<string>('');
+  // Car registration state
   const [addVehSuccess, setAddVehSuccess] = useState<string>('');
 
   // Consolidate services rendered for customer vehicles
   const customerServices = useMemo(() => {
     return services.filter((s) => {
-      if (s.customerId === userId || s.customerId === currentUser?.id) return true;
-      return myVehicles.some((v) => v.id === s.vehicleId);
+      if (!s) return false;
+      if (s.customerId === userId || s.customerId === currentUser?.id || toUuid(s.customerId) === toUuid(userId) || toUuid(s.customerId) === toUuid(currentUser?.id)) return true;
+      return myVehicles.some((v) => v.id === s.vehicleId || toUuid(v.id) === toUuid(s.vehicleId));
     });
   }, [services, userId, currentUser, myVehicles]);
 
@@ -929,7 +995,7 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
     }
   };
 
-  // Add vehicle submit with immediate dispatch of requested services (Oil Change, Car Wash, Parking, EV Charging)
+  // Add vehicle submit
   const handleAddVehicleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newReg || !newMake || !newModel) return;
@@ -951,111 +1017,18 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
 
       if (res.ok) {
         const added = await res.json();
-        const requestedNotesArr: string[] = [];
-
-        // 1. Oil Change Service Request
-        if (reqOilChangeOnReg) {
-          await fetch('/api/services', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              vehicleId: added.id,
-              customerId: userId,
-              serviceType: 'Oil Change & Lubrication Service',
-              cost: 120000,
-              bookingDate: new Date().toISOString(),
-              diagnosticNotes: 'Synthetic engine oil renewal & oil filter replacement requested upon vehicle registration.',
-            }),
-          });
-          requestedNotesArr.push('Oil Change (UGX 120,000)');
-        }
-
-        // 2. Car Wash Service Request
-        if (reqCarWashOnReg) {
-          await fetch('/api/services', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              vehicleId: added.id,
-              customerId: userId,
-              serviceType: 'Car Wash: Executive Foam Wash & Detailing',
-              cost: 25000,
-              bookingDate: new Date().toISOString(),
-              diagnosticNotes: 'Executive snow foam wash & interior vacuum requested upon vehicle registration.',
-            }),
-          });
-          requestedNotesArr.push('Car Wash (UGX 25,000)');
-        }
-
-        // 3. Car Parking Reservation Request
-        if (reqParkingOnReg) {
-          await fetch('/api/parking/reservations', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              userId,
-              vehicleId: added.id,
-              parkingId: 'space-a12',
-              startTime: new Date().toISOString(),
-              endTime: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
-              amount: 5000,
-            }),
-          });
-          requestedNotesArr.push('Car Parking (UGX 5,000)');
-        }
-
-        // 4. EV Charging Station Request
-        if (reqEvChargingOnReg) {
-          await fetch('/api/services', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              vehicleId: added.id,
-              customerId: userId,
-              serviceType: 'EV Supercharging Station Session',
-              cost: 33000,
-              bookingDate: new Date().toISOString(),
-              diagnosticNotes: '45 kWh EV Fast Supercharger reservation requested upon vehicle registration.',
-            }),
-          });
-          requestedNotesArr.push('EV Charging (UGX 33,000)');
-        }
-
-        // 5. Custom Mechanical Garage Service Request
-        if (reqGarageServiceOnReg || carProblemNotesOnReg.trim()) {
-          await fetch('/api/services', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              vehicleId: added.id,
-              customerId: userId,
-              serviceType: carProblemTypeOnReg,
-              cost: 120000,
-              bookingDate: new Date().toISOString(),
-              diagnosticNotes: carProblemNotesOnReg || `Customer reported issue during vehicle registration: ${carProblemTypeOnReg}`,
-            }),
-          });
-          requestedNotesArr.push(`${carProblemTypeOnReg} (UGX 120,000)`);
-        }
-
-        setIsPaymentSettled(false);
         onRefreshAll();
         setSelectedVehicleId(added.id);
 
-        const notesText = requestedNotesArr.length > 0
-          ? ` & services requested (${requestedNotesArr.join(', ')}). Total costs consolidated for single 1-click payment.`
-          : '';
-        setAddVehSuccess(`Vehicle ${added.registrationNumber} registered successfully${notesText}`);
+        setAddVehSuccess(`Vehicle ${added.registrationNumber} registered successfully!`);
 
         setTimeout(() => {
           setNewReg('');
           setNewMake('');
           setNewModel('');
-          setCarProblemNotesOnReg('');
-          setReqGarageServiceOnReg(false);
           setAddVehSuccess('');
           setShowAddVehicleForm(false);
-        }, 3500);
+        }, 2000);
       }
     } catch (e) {
       console.error(e);
@@ -1163,26 +1136,26 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
               </>
             )}
           </div>
-          {myVehicles.length > 1 ? (
+          {myVehicles.length > 0 ? (
             <button
               onClick={() => setShowVehicleManager(!showVehicleManager)}
-              title="Switch Vehicle"
-              className="text-2xs font-bold text-slate-500 hover:text-slate-900 underline cursor-pointer"
+              title="Manage Vehicles"
+              className="text-2xs font-bold text-emerald-600 hover:text-emerald-700 underline cursor-pointer flex items-center gap-1"
             >
-              Switch
+              <span>Manage Cars</span>
             </button>
-          ) : myVehicles.length === 0 ? (
+          ) : (
             <button
               onClick={() => {
                 setShowVehicleManager(true);
                 setShowAddVehicleForm(true);
               }}
               title="Add Vehicle"
-              className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-2xs font-bold transition cursor-pointer flex items-center gap-1"
+              className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-2xs font-bold transition cursor-pointer flex items-center gap-1 shrink-0"
             >
-              <Plus className="w-3 h-3" /> Add
+              <Plus className="w-3 h-3" /> Add Car
             </button>
-          ) : null}
+          )}
         </div>
       </div>
 
@@ -1217,47 +1190,62 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
         </div>
       )}
 
-      {/* Optional Vehicle Selector Drawer */}
+      {/* Optional Vehicle Selector & Management Drawer */}
       {showVehicleManager && (
         <div className="bg-slate-900 text-white rounded-2xl p-4 space-y-3 shadow-lg">
           <div className="flex items-center justify-between border-b border-slate-800 pb-2">
             <span className="text-xs font-bold uppercase tracking-wider font-mono text-slate-300">
-              Select Active Vehicle ({vehicles.length})
+              My Registered Vehicles ({myVehicles.length})
             </span>
             <button
               onClick={() => setShowAddVehicleForm(!showAddVehicleForm)}
               className="text-xs font-bold text-emerald-400 hover:underline flex items-center gap-1 cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" />
-              Add New
+              Add New Car
             </button>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {myVehicles.length === 0 ? (
               <div className="col-span-2 p-4 bg-slate-800 rounded-xl text-center text-xs text-slate-400">
-                No vehicles registered to your account yet. Click "+ Add New" above to register your car.
+                No vehicles registered to your account yet. Click "+ Add New Car" above to register your vehicle.
               </div>
             ) : (
               myVehicles.map((v) => (
-                <button
+                <div
                   key={v.id}
-                  onClick={() => {
-                    setSelectedVehicleId(v.id);
-                    setShowVehicleManager(false);
-                  }}
-                  className={`p-2.5 rounded-xl text-left border transition cursor-pointer flex items-center justify-between ${
+                  className={`p-2.5 rounded-xl border transition flex items-center justify-between ${
                     selectedVehicleId === v.id
                       ? 'bg-emerald-500/20 border-emerald-500 text-white font-bold'
                       : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700'
                   }`}
                 >
-                  <div>
+                  <div
+                    onClick={() => {
+                      setSelectedVehicleId(v.id);
+                      setShowVehicleManager(false);
+                    }}
+                    className="flex-1 cursor-pointer pr-2"
+                  >
                     <p className="text-xs font-extrabold">{v.make} {v.model}</p>
                     <p className="text-3xs font-mono text-emerald-400">{v.registrationNumber}</p>
                   </div>
-                  {selectedVehicleId === v.id && <Check className="w-4 h-4 text-emerald-400" />}
-                </button>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {selectedVehicleId === v.id && <Check className="w-4 h-4 text-emerald-400 mr-1" />}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteVehicle(v.id, v.registrationNumber);
+                      }}
+                      className="p-1.5 bg-rose-500/20 hover:bg-rose-500/40 text-rose-300 hover:text-white rounded-lg transition cursor-pointer"
+                      title="Delete Vehicle"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
               ))
             )}
           </div>
@@ -1298,112 +1286,11 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
                 />
               </div>
 
-              {/* Services Requested Upon Registration */}
-              <div className="pt-2 border-t border-slate-800 space-y-2.5">
-                <span className="text-2xs font-mono font-bold uppercase text-slate-400 block">
-                  Select Requested Services for This Vehicle (Paid at Once):
-                </span>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                  <label className="flex items-center gap-2 p-2 rounded-lg bg-slate-800/80 border border-slate-700/80 cursor-pointer hover:border-emerald-500/50">
-                    <input
-                      type="checkbox"
-                      checked={reqOilChangeOnReg}
-                      onChange={(e) => setReqOilChangeOnReg(e.target.checked)}
-                      className="rounded border-slate-600 text-emerald-500 focus:ring-emerald-500 w-4 h-4 cursor-pointer"
-                    />
-                    <div>
-                      <span className="font-extrabold text-white block">🛢️ Engine Oil Change</span>
-                      <span className="text-3xs font-mono text-emerald-400">UGX 120,000</span>
-                    </div>
-                  </label>
-
-                  <label className="flex items-center gap-2 p-2 rounded-lg bg-slate-800/80 border border-slate-700/80 cursor-pointer hover:border-emerald-500/50">
-                    <input
-                      type="checkbox"
-                      checked={reqCarWashOnReg}
-                      onChange={(e) => setReqCarWashOnReg(e.target.checked)}
-                      className="rounded border-slate-600 text-emerald-500 focus:ring-emerald-500 w-4 h-4 cursor-pointer"
-                    />
-                    <div>
-                      <span className="font-extrabold text-white block">🧽 Executive Car Wash</span>
-                      <span className="text-3xs font-mono text-emerald-400">UGX 25,000</span>
-                    </div>
-                  </label>
-
-                  <label className="flex items-center gap-2 p-2 rounded-lg bg-slate-800/80 border border-slate-700/80 cursor-pointer hover:border-emerald-500/50">
-                    <input
-                      type="checkbox"
-                      checked={reqParkingOnReg}
-                      onChange={(e) => setReqParkingOnReg(e.target.checked)}
-                      className="rounded border-slate-600 text-emerald-500 focus:ring-emerald-500 w-4 h-4 cursor-pointer"
-                    />
-                    <div>
-                      <span className="font-extrabold text-white block">🅿️ Car Parking Reservation</span>
-                      <span className="text-3xs font-mono text-emerald-400">UGX 5,000</span>
-                    </div>
-                  </label>
-
-                  <label className="flex items-center gap-2 p-2 rounded-lg bg-slate-800/80 border border-slate-700/80 cursor-pointer hover:border-emerald-500/50">
-                    <input
-                      type="checkbox"
-                      checked={reqEvChargingOnReg}
-                      onChange={(e) => setReqEvChargingOnReg(e.target.checked)}
-                      className="rounded border-slate-600 text-emerald-500 focus:ring-emerald-500 w-4 h-4 cursor-pointer"
-                    />
-                    <div>
-                      <span className="font-extrabold text-white block">⚡ EV Supercharging</span>
-                      <span className="text-3xs font-mono text-emerald-400">UGX 33,000</span>
-                    </div>
-                  </label>
-                </div>
-
-                <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-emerald-400 pt-1">
-                  <input
-                    type="checkbox"
-                    checked={reqGarageServiceOnReg}
-                    onChange={(e) => setReqGarageServiceOnReg(e.target.checked)}
-                    className="rounded border-slate-700 text-emerald-500 focus:ring-emerald-500 w-4 h-4 cursor-pointer"
-                  />
-                  <span>🔧 Request Additional Specific Garage Repair / Mechanical Issue</span>
-                </label>
-
-                {(reqGarageServiceOnReg || carProblemNotesOnReg.trim().length > 0) && (
-                  <div className="space-y-2.5 bg-slate-800 p-3 rounded-xl border border-slate-700">
-                    <div>
-                      <label className="block text-2xs font-bold font-mono uppercase text-slate-400 mb-1">Car Problem Category</label>
-                      <select
-                        value={carProblemTypeOnReg}
-                        onChange={(e) => setCarProblemTypeOnReg(e.target.value)}
-                        className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-700 text-xs rounded-lg text-white font-medium"
-                      >
-                        <option value="Engine / Mechanical Repair">Engine Knock / Mechanical Fault</option>
-                        <option value="Brake System Service">Brake Squeal / System Failure</option>
-                        <option value="Electrical & Battery">Battery Death / Electrical Wiring Fault</option>
-                        <option value="Suspension & Steering">Suspension / Steering Alignment</option>
-                        <option value="Air Conditioning Repair">AC Refrigerant Leak / Cooling Failure</option>
-                        <option value="General Vehicle Diagnostics">Full Computerized Engine Diagnostics</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-2xs font-bold font-mono uppercase text-slate-400 mb-1">Describe Car Problem Notes</label>
-                      <textarea
-                        rows={2}
-                        placeholder="State car problem details (e.g. Engine knocks on start, spongy brakes...)"
-                        value={carProblemNotesOnReg}
-                        onChange={(e) => setCarProblemNotesOnReg(e.target.value)}
-                        className="w-full p-2 bg-slate-900 border border-slate-700 text-xs rounded-lg text-white"
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-
               <button
                 type="submit"
                 className="w-full py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg cursor-pointer transition shadow-xs flex items-center justify-center gap-1.5"
               >
-                <Plus className="w-4 h-4" /> Save Vehicle & Dispatch Request
+                <Plus className="w-4 h-4" /> Save & Register Vehicle
               </button>
             </form>
           )}
@@ -1432,7 +1319,6 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
             onClick={() => {
               setActiveTab('parking');
               setParkingStep('yard');
-              setShowReserveParkingModal(true);
             }}
             className="w-full py-2.5 px-3 bg-white text-emerald-900 hover:bg-emerald-50 text-xs font-extrabold rounded-xl transition cursor-pointer shadow-sm flex items-center justify-center gap-2"
           >
@@ -1461,7 +1347,6 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
             onClick={() => {
               setActiveTab('services');
               setServiceStep('workshop');
-              setShowTrackServiceModal(true);
             }}
             className="w-full py-2.5 px-3 bg-white text-blue-900 hover:bg-blue-50 text-xs font-extrabold rounded-xl transition cursor-pointer shadow-sm flex items-center justify-center gap-2"
           >
@@ -1490,7 +1375,6 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
             onClick={() => {
               setActiveTab('charging');
               setEvStep('station');
-              setShowEvChargingModal(true);
             }}
             className="w-full py-2.5 px-3 bg-slate-900 text-amber-300 hover:bg-slate-800 text-xs font-extrabold rounded-xl transition cursor-pointer shadow-sm flex items-center justify-center gap-2"
           >
@@ -1519,7 +1403,6 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
             onClick={() => {
               setActiveTab('payments');
               setPayStep('bills');
-              setShowPayNowModal(true);
             }}
             className="w-full py-2.5 px-3 bg-white text-purple-950 hover:bg-purple-50 text-xs font-extrabold rounded-xl transition cursor-pointer shadow-sm flex items-center justify-center gap-2"
           >
@@ -1566,7 +1449,7 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
           )}
 
           {/* Quick Active Status Grid in Overview */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4">
             {/* CURRENT PARKING SUMMARY */}
             <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm space-y-3 relative overflow-hidden">
               <div className="flex items-center justify-between border-b border-slate-100 pb-2">
@@ -1604,41 +1487,6 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
                   <Navigation className="w-3.5 h-3.5" /> Find Car
                 </button>
               </div>
-            </div>
-
-            {/* CONSOLIDATED INVOICE SUMMARY */}
-            <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm space-y-3">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                <h2 className="text-xs font-mono font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
-                  <CreditCard className="w-4 h-4 text-teal-600" />
-                  PAYMENTS & INVOICE
-                </h2>
-                <span className={`px-2 py-0.5 rounded-full text-3xs font-bold font-mono uppercase ${
-                  isPaymentSettled ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
-                }`}>
-                  {isPaymentSettled ? 'Paid ✓' : 'Pending'}
-                </span>
-              </div>
-
-              <div>
-                <div className="text-2xl font-black text-slate-900 font-mono">
-                  UGX {isPaymentSettled ? '0' : totalCalculatedCostUGX.toLocaleString()}
-                </div>
-                <p className="text-3xs text-slate-500 mt-0.5">
-                  {renderedItemsList.length} services rendered ready for 1-click payment
-                </p>
-              </div>
-
-              <button
-                disabled={isPaymentSettled}
-                onClick={() => setShowPayNowModal(true)}
-                className={`w-full py-2.5 px-3 text-white font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5 ${
-                  isPaymentSettled ? 'bg-slate-300 text-slate-600 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700 cursor-pointer'
-                }`}
-              >
-                <CreditCard className="w-3.5 h-3.5" />
-                <span>{isPaymentSettled ? 'All Fees Settled ✓' : 'Pay All Services Now'}</span>
-              </button>
             </div>
           </div>
         </div>
@@ -2676,24 +2524,34 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <h4 className="text-xs font-mono font-bold uppercase tracking-wider text-slate-600 block">
-                    3. Choose Parking Slot
+                    3. Choose Parking Slot (Location Matched)
                   </h4>
-                  <span className="text-3xs text-slate-400 font-mono">Floor {selectedFloor} Grid</span>
+                  <span className="text-3xs text-indigo-600 font-bold font-mono">
+                    {(NATIONWIDE_YARDS.find(y => y.id === selectedModalYardId) || NATIONWIDE_YARDS[0]).name} • Floor {selectedFloor}
+                  </span>
                 </div>
                 <div className="grid grid-cols-4 gap-2 font-mono text-xs">
-                  {['A12', 'A13', 'A14', 'A15', 'A16', 'A17', 'A18', 'A19'].map((slot) => (
-                    <button
-                      key={slot}
-                      onClick={() => setSelectedSpaceId(slot)}
-                      className={`py-3 rounded-xl border font-bold cursor-pointer transition text-center ${
-                        selectedSpaceId === slot || (!selectedSpaceId && slot === 'A12')
-                          ? 'bg-indigo-600 text-white border-indigo-700 shadow-sm ring-2 ring-indigo-400/40'
-                          : 'bg-slate-50 text-slate-700 border-slate-200 hover:border-indigo-300'
-                      }`}
-                    >
-                      {slot}
-                    </button>
-                  ))}
+                  {(() => {
+                    const yard = NATIONWIDE_YARDS.find(y => y.id === selectedModalYardId) || NATIONWIDE_YARDS[0];
+                    const prefix = yard.id.includes('entebbe') ? 'EBB' : yard.id.includes('jinja') ? 'JNJ' : yard.id.includes('mbarara') ? 'MBR' : yard.id.includes('gulu') ? 'GLU' : 'KLA';
+                    const fl = selectedFloor === 'G' ? 'G' : selectedFloor;
+                    const slots = [12, 13, 14, 15, 16, 17, 18, 19].map(n => `${prefix}-${fl}${n}`);
+                    const activeSlot = selectedSpaceId && slots.includes(selectedSpaceId) ? selectedSpaceId : slots[0];
+                    return slots.map((slot) => (
+                      <button
+                        key={slot}
+                        type="button"
+                        onClick={() => setSelectedSpaceId(slot)}
+                        className={`py-3 rounded-xl border font-bold cursor-pointer transition text-center ${
+                          activeSlot === slot
+                            ? 'bg-indigo-600 text-white border-indigo-700 shadow-sm ring-2 ring-indigo-400/40'
+                            : 'bg-slate-50 text-slate-700 border-slate-200 hover:border-indigo-300'
+                        }`}
+                      >
+                        {slot}
+                      </button>
+                    ));
+                  })()}
                 </div>
               </div>
 
@@ -2739,7 +2597,7 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
                         <div>
                           <span className="text-sm font-black text-white">{currentYard.name}</span>
                           <p className="text-3xs text-slate-300 font-mono">
-                            Floor {selectedFloor} • Slot {selectedSpaceId || 'A12'} • {reserveHours === 0.5 ? '30 Mins' : `${reserveHours} Hours`}
+                            Floor {selectedFloor} • Slot {selectedSpaceId || (currentYard.id.includes('entebbe') ? 'EBB-G12' : currentYard.id.includes('jinja') ? 'JNJ-G12' : 'KLA-G12')} • {reserveHours === 0.5 ? '30 Mins' : `${reserveHours} Hours`}
                           </p>
                         </div>
                         <div className="text-right font-mono">
@@ -2850,6 +2708,27 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
                       </button>
                     );
                   })}
+                </div>
+
+                {/* Additional Specific Garage Repair Option */}
+                <div className="pt-2">
+                  <button
+                    onClick={() => {
+                      setShowTrackServiceModal(false);
+                      setTargetVehForGarage(activeVehicle);
+                      setShowReqGarageModal(true);
+                    }}
+                    className="w-full p-3 rounded-2xl border border-dashed border-emerald-500 bg-emerald-50 hover:bg-emerald-100/70 text-left transition cursor-pointer flex items-center justify-between gap-3 shadow-2xs"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <span className="text-xl">🔧</span>
+                      <div>
+                        <span className="text-xs font-black text-slate-900 block">Request Additional Specific Garage Repair / Mechanical Issue</span>
+                        <span className="text-3xs text-slate-600">Report specific engine fault, brake noise, electrical issue, or custom repair</span>
+                      </div>
+                    </div>
+                    <span className="px-2.5 py-1.5 text-3xs font-extrabold text-white bg-emerald-600 rounded-xl shrink-0">Describe Issue →</span>
+                  </button>
                 </div>
               </div>
 
@@ -3297,23 +3176,49 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
             <form onSubmit={handleRequestGarageServiceSubmit} className="space-y-3">
               <div>
                 <label className="text-xs font-bold text-slate-700 block mb-1">Target Vehicle:</label>
-                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-xs text-slate-900 flex items-center justify-between">
-                  <span>{(targetVehForGarage || activeVehicle)?.make} {(targetVehForGarage || activeVehicle)?.model}</span>
-                  <span className="font-mono text-emerald-600">{(targetVehForGarage || activeVehicle)?.registrationNumber}</span>
-                </div>
+                {myVehicles.length > 1 ? (
+                  <select
+                    value={(targetVehForGarage || activeVehicle)?.id}
+                    onChange={(e) => {
+                      const veh = myVehicles.find((v) => v.id === e.target.value);
+                      if (veh) setTargetVehForGarage(veh);
+                    }}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 text-xs rounded-xl text-slate-900 font-bold"
+                  >
+                    {myVehicles.map((v) => (
+                      <option key={v.id} value={v.id}>
+                        {v.make} {v.model} ({v.registrationNumber})
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-xs text-slate-900 flex items-center justify-between">
+                    <span>{(targetVehForGarage || activeVehicle)?.make} {(targetVehForGarage || activeVehicle)?.model}</span>
+                    <span className="font-mono text-emerald-600">{(targetVehForGarage || activeVehicle)?.registrationNumber}</span>
+                  </div>
+                )}
               </div>
 
               <div>
-                <label className="text-xs font-bold text-slate-700 block mb-1">Service Required (Auto-Matched):</label>
-                <div className="p-3 bg-purple-50 border border-purple-200/80 rounded-xl font-black text-xs text-purple-950 flex items-center justify-between shadow-3xs">
-                  <span className="flex items-center gap-2">
-                    <Wrench className="w-4 h-4 text-purple-600" />
-                    {garageProblemType || selectedServicePackage || 'Vehicle Service Request'}
-                  </span>
-                  <span className="text-[10px] font-mono text-purple-700 bg-purple-100 px-2 py-0.5 rounded font-bold">
-                    Auto-Matched
-                  </span>
-                </div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">Service / Repair Category:</label>
+                <select
+                  value={garageProblemType || selectedServicePackage || 'Engine / Mechanical Repair'}
+                  onChange={(e) => {
+                    setGarageProblemType(e.target.value);
+                    setSelectedServicePackage(e.target.value);
+                  }}
+                  className="w-full p-2.5 bg-purple-50 border border-purple-200/80 rounded-xl font-extrabold text-xs text-purple-950 focus:ring-purple-500"
+                >
+                  <option value="Engine / Mechanical Repair">⚙️ Engine Knock / Mechanical Fault (UGX 120,000)</option>
+                  <option value="Brake System Service">🛑 Brake System Repair & Rotor Skimming (UGX 150,000)</option>
+                  <option value="Electrical & Battery">🔋 Battery Replacement & Wiring Fault (UGX 90,000)</option>
+                  <option value="Suspension & Steering">🏎️ Suspension & Steering Alignment (UGX 110,000)</option>
+                  <option value="Air Conditioning Repair">❄️ AC Refrigerant Refill & Cooling (UGX 95,000)</option>
+                  <option value="General Vehicle Diagnostics">💻 Computerized Diagnostic Scan (UGX 80,000)</option>
+                  <option value="Oil Change & Lubrication Service">🛢️ Engine Oil Change & Filter Renewal (UGX 120,000)</option>
+                  <option value="Car Wash: Executive Foam Wash & Detailing">🧽 Executive Snow Foam Wash & Detailing (UGX 25,000)</option>
+                  <option value="Specific Garage Repair Request">🔧 Custom Specific Garage Repair Request</option>
+                </select>
               </div>
 
               <div>

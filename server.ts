@@ -646,16 +646,27 @@ const payments: Payment[] = [
 // --- SUPABASE FK INTEGRITY HELPERS ---
 async function ensureUserInSupabase(userId: string) {
   if (!supabase || !userId) return;
-  const u = users.find((existing) => existing.id === userId);
-  if (u) {
-    const { error } = await supabase.from('users').upsert(mapUserToDb(u));
-    if (error) console.error(`⚠️ Supabase save user error (${userId}):`, error.message);
+  let u = users.find(
+    (existing) => existing.id === userId || toUuid(existing.id) === userId || toUuid(existing.id) === toUuid(userId) || (existing.email && existing.email.toLowerCase() === userId.toLowerCase())
+  );
+  if (!u) {
+    u = {
+      id: userId,
+      name: userId.startsWith('usr-') ? `Customer ${userId}` : userId,
+      email: userId.includes('@') ? userId : `${userId}@ugpark.com`,
+      phone: '+256 700 000 000',
+      role: UserRole.CUSTOMER,
+      createdAt: new Date().toISOString(),
+    };
+    users.push(u);
   }
+  const { error } = await supabase.from('users').upsert(mapUserToDb(u));
+  if (error) console.error(`⚠️ Supabase save user error (${userId}):`, error.message);
 }
 
 async function ensureVehicleInSupabase(vehicleId: string) {
   if (!supabase || !vehicleId) return;
-  const v = vehicles.find((existing) => existing.id === vehicleId);
+  let v = vehicles.find((existing) => existing.id === vehicleId || toUuid(existing.id) === vehicleId || toUuid(existing.id) === toUuid(vehicleId));
   if (v) {
     await ensureUserInSupabase(v.userId);
     const { error } = await supabase.from('vehicles').upsert(mapVehicleToDb(v));
@@ -665,7 +676,7 @@ async function ensureVehicleInSupabase(vehicleId: string) {
 
 async function ensureParkingSpaceInSupabase(parkingId: string) {
   if (!supabase || !parkingId) return;
-  const s = parkingSpaces.find((existing) => existing.id === parkingId);
+  let s = parkingSpaces.find((existing) => existing.id === parkingId || toUuid(existing.id) === parkingId || toUuid(existing.id) === toUuid(parkingId));
   if (s) {
     const { error } = await supabase.from('parking_spaces').upsert(mapParkingSpaceToDb(s));
     if (error) console.error(`⚠️ Supabase save space error (${parkingId}):`, error.message);
@@ -1041,6 +1052,28 @@ app.post('/api/vehicles', async (req, res) => {
   }
 
   res.status(201).json(newVehicle);
+});
+
+app.delete('/api/vehicles/:id', async (req, res) => {
+  const { id } = req.params;
+  const idx = vehicles.findIndex((v) => v.id === id || toUuid(v.id) === id || toUuid(v.id) === toUuid(id));
+  if (idx === -1) {
+    return res.status(404).json({ error: 'Vehicle not found' });
+  }
+  const removed = vehicles.splice(idx, 1)[0];
+
+  if (supabase) {
+    try {
+      const targetId = toUuid(removed.id) || removed.id;
+      const { error } = await supabase.from('vehicles').delete().eq('id', targetId);
+      if (error) console.error('Supabase vehicle delete error:', error.message);
+      else console.log('✅ Deleted vehicle from Supabase:', removed.registrationNumber);
+    } catch (err) {
+      console.error('Supabase vehicle delete exception:', err);
+    }
+  }
+
+  res.json({ success: true, message: `Vehicle ${removed.registrationNumber} deleted`, vehicle: removed });
 });
 
 // Parking Spaces API
