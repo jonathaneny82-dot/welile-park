@@ -41,7 +41,7 @@ export default function App() {
 
   const fetchAllData = async () => {
     try {
-      const [usrRes, vehRes, parkRes, reserveRes, serviceRes, invRes, payRes] = await Promise.all([
+      const [usrRes, vehRes, parkRes, reserveRes, serviceRes, invRes, payRes] = await Promise.allSettled([
         fetch('/api/users'),
         fetch('/api/vehicles'),
         fetch('/api/parking/spaces'),
@@ -51,30 +51,53 @@ export default function App() {
         fetch('/api/payments'),
       ]);
 
-      if (!usrRes.ok || !vehRes.ok || !parkRes.ok || !reserveRes.ok || !serviceRes.ok || !invRes.ok || !payRes.ok) {
-        throw new Error('Failed to synchronize data state from server.');
-      }
+      const getJson = async (res: PromiseSettledResult<Response>) => {
+        if (res.status === 'fulfilled' && res.value.ok) {
+          return await res.value.json().catch(() => null);
+        }
+        return null;
+      };
 
       const [usrData, vehData, parkData, reserveData, serviceData, invData, payData] = await Promise.all([
-        usrRes.json(),
-        vehRes.json(),
-        parkRes.json(),
-        reserveRes.json(),
-        serviceRes.json(),
-        invRes.json(),
-        payRes.json(),
+        getJson(usrRes),
+        getJson(vehRes),
+        getJson(parkRes),
+        getJson(reserveRes),
+        getJson(serviceRes),
+        getJson(invRes),
+        getJson(payRes),
       ]);
 
-      setUsers(usrData);
-      setVehicles(vehData);
-      setParkingSpaces(parkData);
-      setReservations(reserveData);
-      setServices(serviceData);
-      setInventory(invData);
-      setPayments(payData);
+      if (usrData && Array.isArray(usrData)) setUsers(usrData);
+      
+      // Load and merge local vehicles
+      let combinedVehicles: Vehicle[] = Array.isArray(vehData) ? [...vehData] : [];
+      try {
+        const savedVeh = localStorage.getItem('ugpark_local_vehicles');
+        if (savedVeh) {
+          const localVehs: Vehicle[] = JSON.parse(savedVeh);
+          localVehs.forEach((lv) => {
+            if (!combinedVehicles.some((v) => v.id === lv.id || v.registrationNumber === lv.registrationNumber)) {
+              combinedVehicles.push(lv);
+            }
+          });
+        }
+      } catch {}
+
+      if (combinedVehicles.length > 0) {
+        setVehicles(combinedVehicles);
+      } else if (Array.isArray(vehData)) {
+        setVehicles(vehData);
+      }
+
+      if (parkData && Array.isArray(parkData)) setParkingSpaces(parkData);
+      if (reserveData && Array.isArray(reserveData)) setReservations(reserveData);
+      if (serviceData && Array.isArray(serviceData)) setServices(serviceData);
+      if (invData && Array.isArray(invData)) setInventory(invData);
+      if (payData && Array.isArray(payData)) setPayments(payData);
 
       // Keep currentUser synced if user list updated
-      if (currentUser) {
+      if (currentUser && usrData && Array.isArray(usrData)) {
         const matched = usrData.find((u: User) => u.id === currentUser.id);
         if (matched) {
           setCurrentUser(matched);
@@ -83,7 +106,7 @@ export default function App() {
 
       setError('');
     } catch (err: any) {
-      setError(err.message || 'Connecting to integrated server...');
+      console.warn('Sync notice:', err);
     } finally {
       setIsLoading(false);
     }
