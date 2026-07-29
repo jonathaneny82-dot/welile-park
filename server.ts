@@ -96,6 +96,10 @@ function mapUserToDb(u: User) {
     is_authorized_staff: u.isAuthorizedStaff ?? false,
     authorization_status: u.authorizationStatus || 'Customer',
     created_at: u.createdAt || new Date().toISOString(),
+    is_verified: u.isVerified ?? true,
+    verification_token: u.verificationToken || null,
+    verification_sent_at: u.verificationSentAt || null,
+    verified_at: u.verifiedAt || null,
   };
 }
 
@@ -109,6 +113,10 @@ function mapUserFromDb(row: any): User {
     createdAt: row.created_at,
     isAuthorizedStaff: row.is_authorized_staff,
     authorizationStatus: row.authorization_status,
+    isVerified: row.is_verified ?? true,
+    verificationToken: row.verification_token,
+    verificationSentAt: row.verification_sent_at,
+    verifiedAt: row.verified_at,
   };
 }
 
@@ -344,6 +352,7 @@ const users: User[] = [
     createdAt: '2026-01-10T10:00:00Z',
     isAuthorizedStaff: false,
     authorizationStatus: 'Customer',
+    isVerified: true,
   },
   {
     id: 'usr-2',
@@ -354,6 +363,7 @@ const users: User[] = [
     createdAt: '2026-02-15T08:30:00Z',
     isAuthorizedStaff: true,
     authorizationStatus: 'Authorized',
+    isVerified: true,
   },
   {
     id: 'usr-3',
@@ -364,6 +374,7 @@ const users: User[] = [
     createdAt: '2026-03-01T07:45:00Z',
     isAuthorizedStaff: true,
     authorizationStatus: 'Authorized',
+    isVerified: true,
   },
   {
     id: 'usr-4',
@@ -374,6 +385,7 @@ const users: User[] = [
     createdAt: '2026-01-20T09:00:00Z',
     isAuthorizedStaff: true,
     authorizationStatus: 'Authorized',
+    isVerified: true,
   },
   {
     id: 'usr-5',
@@ -384,6 +396,7 @@ const users: User[] = [
     createdAt: '2025-12-01T08:00:00Z',
     isAuthorizedStaff: true,
     authorizationStatus: 'Authorized',
+    isVerified: true,
   },
   {
     id: 'usr-6',
@@ -394,6 +407,7 @@ const users: User[] = [
     createdAt: '2026-03-10T08:00:00Z',
     isAuthorizedStaff: true,
     authorizationStatus: 'Authorized',
+    isVerified: true,
   },
   {
     id: 'usr-7',
@@ -404,6 +418,7 @@ const users: User[] = [
     createdAt: '2026-04-01T08:00:00Z',
     isAuthorizedStaff: true,
     authorizationStatus: 'Authorized',
+    isVerified: true,
   },
 ];
 
@@ -887,12 +902,175 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// Roles Selector & Create User API
+// Roles Selector & List Users API
 app.get('/api/users', (req, res) => {
   res.json(users);
 });
 
-// Login & Authentication Endpoint
+// Registration Endpoint - Creates unverified accounts requiring mandatory email verification
+app.post('/api/register', async (req, res) => {
+  const { name, email, phone, role } = req.body;
+  const cleanEmail = (email || '').trim().toLowerCase();
+  const cleanName = (name || '').trim();
+
+  if (!cleanEmail) {
+    return res.status(400).json({ error: 'Email address is required for registration.' });
+  }
+
+  // Check if user already exists
+  const existingUser = users.find((u) => u.email.toLowerCase() === cleanEmail);
+  if (existingUser) {
+    if (!existingUser.isVerified) {
+      return res.status(200).json({
+        success: false,
+        isUnverified: true,
+        user: existingUser,
+        email: existingUser.email,
+        token: existingUser.verificationToken,
+        message: 'An account with this email already exists but is unverified. Please verify your email before signing in.',
+      });
+    }
+    return res.status(400).json({ error: 'An account with this email address already exists. Please sign in.' });
+  }
+
+  const requestedRole = (role as UserRole) || UserRole.CUSTOMER;
+  const isStaff = requestedRole !== UserRole.CUSTOMER;
+  const token = `vtoken-${Math.random().toString(36).substring(2)}${Date.now()}`;
+
+  const newUser: User = {
+    id: `usr-${Date.now()}`,
+    name: cleanName || cleanEmail.split('@')[0],
+    email: cleanEmail,
+    phone: phone ? phone.trim() : '+256 700 000000',
+    role: requestedRole,
+    createdAt: new Date().toISOString(),
+    isAuthorizedStaff: isStaff,
+    authorizationStatus: isStaff ? 'Authorized' : 'Customer',
+    isVerified: false,
+    verificationToken: token,
+    verificationSentAt: new Date().toISOString(),
+  };
+
+  users.push(newUser);
+
+  if (supabase) {
+    try {
+      await supabase.from('users').upsert(mapUserToDb(newUser));
+    } catch (e) {
+      console.error('Supabase save user error on registration:', e);
+    }
+  }
+
+  res.json({
+    success: true,
+    isUnverified: true,
+    user: newUser,
+    token: newUser.verificationToken,
+    message: 'Registration successful! A verification email with a secure link has been sent. You must verify your email before logging in.',
+  });
+});
+
+// Resend Verification Email Endpoint
+app.post('/api/resend-verification', async (req, res) => {
+  const { email } = req.body;
+  const cleanEmail = (email || '').trim().toLowerCase();
+
+  const user = users.find((u) => u.email.toLowerCase() === cleanEmail);
+  if (!user) {
+    return res.status(444).json({ error: 'No account found with that email address.' });
+  }
+
+  if (user.isVerified) {
+    return res.json({ success: false, message: 'This account email is already verified. You can log in directly.' });
+  }
+
+  const token = `vtoken-${Math.random().toString(36).substring(2)}${Date.now()}`;
+  user.verificationToken = token;
+  user.verificationSentAt = new Date().toISOString();
+
+  if (supabase) {
+    try {
+      await supabase.from('users').upsert(mapUserToDb(user));
+    } catch (e) {
+      console.error('Supabase update verification token error:', e);
+    }
+  }
+
+  res.json({
+    success: true,
+    token: user.verificationToken,
+    email: user.email,
+    message: `A new verification email has been sent to ${user.email}. Please verify your email before signing in.`,
+  });
+});
+
+// Verify Email Endpoint (by token, query token, or email)
+app.all('/api/verify-email', async (req, res) => {
+  const token = (req.query.token || req.body.token || '').toString();
+  const email = (req.query.email || req.body.email || '').toString().toLowerCase();
+
+  let user = users.find(
+    (u) =>
+      (token && u.verificationToken === token) ||
+      (email && u.email.toLowerCase() === email) ||
+      (token && u.id === token)
+  );
+
+  if (!user && email) {
+    user = users.find((u) => u.email.toLowerCase() === email);
+  }
+
+  if (!user) {
+    return res.status(404).json({ error: 'Invalid or expired verification token.' });
+  }
+
+  user.isVerified = true;
+  user.verifiedAt = new Date().toISOString();
+  user.verificationToken = undefined;
+
+  if (supabase) {
+    try {
+      await supabase.from('users').upsert(mapUserToDb(user));
+    } catch (e) {
+      console.error('Supabase verify user error:', e);
+    }
+  }
+
+  res.json({
+    success: true,
+    user,
+    message: '✅ Email address verified successfully! You can now sign in to access your account.',
+  });
+});
+
+// Systems Manager Manual Account Verification Endpoint
+app.put('/api/users/:id/verify', async (req, res) => {
+  const { id } = req.params;
+  const user = users.find((u) => u.id === id);
+  if (!user) {
+    return res.status(404).json({ error: 'User account not found.' });
+  }
+
+  user.isVerified = true;
+  user.verifiedAt = new Date().toISOString();
+  user.verificationToken = undefined;
+
+  if (supabase) {
+    try {
+      await supabase.from('users').upsert(mapUserToDb(user));
+    } catch (e) {
+      console.error('Supabase manager verify user error:', e);
+    }
+  }
+
+  res.json({
+    success: true,
+    user,
+    message: `User ${user.name} (${user.email}) has been verified by Systems Manager.`,
+  });
+});
+
+// Login & Authentication Endpoint (Enforces Mandatory Email Verification)
 app.post('/api/login', async (req, res) => {
   const { email, name, role, phone } = req.body;
   const reqEmail = (email || '').trim();
@@ -927,6 +1105,7 @@ app.post('/api/login', async (req, res) => {
           ? rawInput.toLowerCase()
           : `${rawInput.toLowerCase().replace(/\s+/g, '.')}@ugpark.com`;
 
+      const token = `vtoken-${Math.random().toString(36).substring(2)}${Date.now()}`;
       user = {
         id: `usr-${Date.now()}`,
         name: finalName,
@@ -936,6 +1115,9 @@ app.post('/api/login', async (req, res) => {
         createdAt: new Date().toISOString(),
         isAuthorizedStaff: isStaff,
         authorizationStatus: isStaff ? 'Authorized' : 'Customer',
+        isVerified: false,
+        verificationToken: token,
+        verificationSentAt: new Date().toISOString(),
       };
       users.push(user);
 
@@ -947,6 +1129,18 @@ app.post('/api/login', async (req, res) => {
         }
       }
     }
+  }
+
+  // ENFORCE MANDATORY EMAIL VERIFICATION
+  if (user && user.isVerified === false) {
+    return res.status(200).json({
+      success: false,
+      isUnverified: true,
+      error: 'Your email address is not verified. Users must verify their email before they can sign in or access any part of the application.',
+      user,
+      email: user.email,
+      token: user.verificationToken || `vtoken-${user.id}`,
+    });
   }
 
   res.json({ success: true, user, warning, token: `jwt-token-${user.id}` });

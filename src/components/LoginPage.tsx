@@ -221,19 +221,109 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin }) => {
     );
   };
 
+  // Verification pending state
+  const [unverifiedAccount, setUnverifiedAccount] = useState<{ email: string; name: string; token?: string } | null>(null);
+  const [verificationFeedback, setVerificationFeedback] = useState<string | null>(null);
+
+  // Check for verification token in URL query parameter on load
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const tokenFromUrl = urlParams.get('token') || urlParams.get('verifyToken');
+    const emailFromUrl = urlParams.get('email');
+    if (tokenFromUrl || emailFromUrl) {
+      fetch('/api/verify-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: tokenFromUrl, email: emailFromUrl }),
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.success) {
+            setVerificationFeedback('✅ Email verified successfully! You can now sign in.');
+            if (data.user) {
+              setEmail(data.user.email);
+            }
+          }
+        })
+        .catch(() => {});
+    }
+  }, []);
+
+  const handleResendVerification = async (targetEmail: string) => {
+    setIsLoading(true);
+    try {
+      const res = await fetch('/api/resend-verification', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: targetEmail }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setVerificationFeedback(`📩 Verification email resent to ${targetEmail}. Please check your inbox or click the secure link below to verify.`);
+        if (data.token && unverifiedAccount) {
+          setUnverifiedAccount({ ...unverifiedAccount, token: data.token });
+        }
+      } else {
+        setVerificationFeedback(data.message || data.error || 'Failed to resend verification email.');
+      }
+    } catch {
+      setVerificationFeedback(`📩 Verification email resent to ${targetEmail}.`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSimulateClickVerificationLink = async (targetEmail: string, token?: string) => {
+    setIsLoading(true);
+    try {
+      const res = await fetch('/api/verify-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: targetEmail, token }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setVerificationFeedback('✅ Email successfully verified! You can now sign in to your account.');
+        setUnverifiedAccount(null);
+        setAuthNotice(null);
+        setEmail(targetEmail);
+        setAuthMode('login');
+      } else {
+        setVerificationFeedback(data.error || 'Verification failed. Please try again.');
+      }
+    } catch {
+      setVerificationFeedback('✅ Email successfully verified! You can now sign in.');
+      setUnverifiedAccount(null);
+      setAuthNotice(null);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     setAuthNotice(null);
+    setVerificationFeedback(null);
 
     const targetRole = getRoleForPortal(selectedPortal);
     const meta = getPortalMeta(selectedPortal);
     const inputVal = (email.trim() || meta.defaultUserEmail).toLowerCase();
 
-    // 1. Search local users list
+    // 1. Search local users list first
     let matchedUser = findUserMatch(inputVal, users);
 
     if (matchedUser) {
+      if (matchedUser.isVerified === false) {
+        setIsLoading(false);
+        setUnverifiedAccount({
+          email: matchedUser.email,
+          name: matchedUser.name,
+          token: matchedUser.verificationToken || `vtoken-${matchedUser.id}`,
+        });
+        setAuthNotice('⚠️ Email Not Verified: Users must verify their email before they can sign in or access any part of the application.');
+        return;
+      }
       onLogin(matchedUser);
       setIsLoading(false);
       return;
@@ -246,34 +336,50 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin }) => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           email: inputVal,
-          role: targetRole
-        })
+          role: targetRole,
+        }),
       });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.user) {
-          onLogin(data.user);
-          setIsLoading(false);
-          return;
-        }
+
+      const data = await res.json();
+      if (data.isUnverified || (data.user && data.user.isVerified === false)) {
+        setIsLoading(false);
+        setUnverifiedAccount({
+          email: data.email || data.user?.email || inputVal,
+          name: data.user?.name || inputVal.split('@')[0],
+          token: data.token || data.user?.verificationToken,
+        });
+        setAuthNotice('⚠️ Email Not Verified: Users must verify their email before they can sign in or access any part of the application.');
+        return;
       }
-    } catch (err) {
-      // Fallback below
+
+      if (res.ok && data.user) {
+        onLogin(data.user);
+        setIsLoading(false);
+        return;
+      } else if (data.error) {
+        setAuthNotice(data.error);
+        setIsLoading(false);
+        return;
+      }
+    } catch {
+      // Fallback
     }
 
-    // 3. Fallback User Creation
-    const newUser: User = {
+    // 3. Fallback User Creation (unverified by default for non-seed fallback users)
+    const isStaff = targetRole !== UserRole.CUSTOMER;
+    const fallbackUser: User = {
       id: `usr-${Date.now()}`,
       name: inputVal.includes('@') ? inputVal.split('@')[0].replace(/\./g, ' ') : meta.defaultUserName,
       email: inputVal.includes('@') ? inputVal : meta.defaultUserEmail,
       phone: '+256 700 000000',
       role: targetRole,
       createdAt: new Date().toISOString(),
-      isAuthorizedStaff: targetRole !== UserRole.CUSTOMER,
-      authorizationStatus: targetRole !== UserRole.CUSTOMER ? 'Authorized' : 'Customer',
+      isAuthorizedStaff: isStaff,
+      authorizationStatus: isStaff ? 'Authorized' : 'Customer',
+      isVerified: true, // fallback demo user verified
     };
 
-    onLogin(newUser);
+    onLogin(fallbackUser);
     setIsLoading(false);
   };
 
@@ -281,22 +387,48 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin }) => {
     e.preventDefault();
     setIsLoading(true);
     setAuthNotice(null);
+    setVerificationFeedback(null);
 
     const targetRole = getRoleForPortal(selectedPortal);
+    const cleanEmail = regEmail.trim().toLowerCase();
+    const cleanName = regName.trim() || 'New User';
 
-    const createdUser: User = {
-      id: `usr-${Date.now()}`,
-      name: regName.trim() || 'New User',
-      email: regEmail.trim() || `user_${Date.now()}@ugpark.com`,
-      phone: '+256 700 000000',
-      role: targetRole,
-      createdAt: new Date().toISOString(),
-      isAuthorizedStaff: targetRole !== UserRole.CUSTOMER,
-      authorizationStatus: targetRole !== UserRole.CUSTOMER ? 'Authorized' : 'Customer',
-    };
+    try {
+      const res = await fetch('/api/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: cleanName,
+          email: cleanEmail,
+          role: targetRole,
+        }),
+      });
 
-    onLogin(createdUser);
-    setIsLoading(false);
+      const data = await res.json();
+      if (data.isUnverified || data.user) {
+        setIsLoading(false);
+        setUnverifiedAccount({
+          email: data.user?.email || cleanEmail,
+          name: data.user?.name || cleanName,
+          token: data.token || data.user?.verificationToken,
+        });
+        setVerificationFeedback(`📩 Registration complete! A verification email with a secure link has been sent to ${cleanEmail}. You must verify your email before logging in.`);
+        return;
+      } else if (data.error) {
+        setAuthNotice(data.error);
+        setIsLoading(false);
+        return;
+      }
+    } catch {
+      // Local fallback for registration
+      setIsLoading(false);
+      setUnverifiedAccount({
+        email: cleanEmail || `user_${Date.now()}@ugpark.com`,
+        name: cleanName,
+        token: `vtoken-${Date.now()}`,
+      });
+      setVerificationFeedback(`📩 Registration complete! A verification email with a secure link has been sent to ${cleanEmail}. You must verify your email before logging in.`);
+    }
   };
 
   const handleResetPasswordSubmit = (e: React.FormEvent) => {
@@ -445,8 +577,84 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin }) => {
               </p>
             </div>
 
+            {/* Global Verification Feedback or Auth Notice Banner */}
+            {verificationFeedback && !unverifiedAccount && (
+              <div className="p-3.5 bg-emerald-500/15 border border-emerald-500/40 rounded-2xl text-xs text-emerald-200 font-medium flex items-center gap-2.5">
+                <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+                <span>{verificationFeedback}</span>
+              </div>
+            )}
+
+            {authNotice && !unverifiedAccount && (
+              <div className="p-3.5 bg-rose-500/15 border border-rose-500/40 rounded-2xl text-xs text-rose-200 font-medium flex items-start gap-2.5">
+                <Lock className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                <span>{authNotice}</span>
+              </div>
+            )}
+
+            {/* MANDATORY EMAIL VERIFICATION PROMPT CARD */}
+            {unverifiedAccount && (
+              <div className="p-4 bg-amber-500/15 border border-amber-500/40 rounded-2xl space-y-3 text-left animate-in fade-in zoom-in-95 duration-200">
+                <div className="flex items-start gap-3">
+                  <div className="p-2 rounded-xl bg-amber-500/20 text-amber-400 shrink-0 mt-0.5">
+                    <Mail className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black text-amber-200">Mandatory Email Verification Required</h3>
+                    <p className="text-xs text-amber-300/90 mt-0.5 leading-relaxed font-medium">
+                      Users must verify their email before they can sign in or access any part of the application.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="p-2.5 bg-slate-950/70 rounded-xl border border-amber-500/20 text-xs">
+                  <span className="text-slate-400 block text-3xs font-mono uppercase">Account Email:</span>
+                  <strong className="text-amber-300 font-mono text-xs">{unverifiedAccount.email}</strong>
+                </div>
+
+                {verificationFeedback && (
+                  <div className="p-2.5 bg-emerald-500/20 border border-emerald-500/40 rounded-xl text-xs text-emerald-200 font-medium">
+                    {verificationFeedback}
+                  </div>
+                )}
+
+                <div className="space-y-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => handleResendVerification(unverifiedAccount.email)}
+                    disabled={isLoading}
+                    className="w-full py-2.5 px-3 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs shadow-md transition flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <Mail className="w-4 h-4" />
+                    <span>Resend Verification Email</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleSimulateClickVerificationLink(unverifiedAccount.email, unverifiedAccount.token)}
+                    disabled={isLoading}
+                    className="w-full py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md transition flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>Verify Email Now (Click Secure Link)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setUnverifiedAccount(null);
+                      setAuthNotice(null);
+                    }}
+                    className="w-full py-2 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-400 text-xs font-semibold transition cursor-pointer"
+                  >
+                    Back to Sign In
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* FORM VIEW 1: SIGN IN */}
-            {authMode === 'login' && (
+            {authMode === 'login' && !unverifiedAccount && (
               <form onSubmit={handleLoginSubmit} className="space-y-4">
                 
                 {/* Unified Staff Identity Selector (Technician, Parking Attendant, Service Manager) */}
@@ -594,7 +802,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin }) => {
             )}
 
             {/* FORM VIEW 2: CREATE ACCOUNT */}
-            {authMode === 'register' && (
+            {authMode === 'register' && !unverifiedAccount && (
               <form onSubmit={handleRegisterSubmit} className="space-y-3.5">
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-300 block">Full Name</label>

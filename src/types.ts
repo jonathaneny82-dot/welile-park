@@ -15,6 +15,10 @@ export interface User {
   createdAt: string;
   isAuthorizedStaff?: boolean;
   authorizationStatus?: 'Authorized' | 'Pending Approval' | 'Customer';
+  isVerified?: boolean;
+  verificationToken?: string;
+  verificationSentAt?: string;
+  verifiedAt?: string;
 }
 
 export interface Vehicle {

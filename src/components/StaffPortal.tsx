@@ -43,6 +43,8 @@ import {
   ShieldCheck,
   X,
   MapPin,
+  Menu,
+  Home,
 } from 'lucide-react';
 import {
   googleSignIn,
@@ -364,8 +366,9 @@ export const StaffPortal: React.FC<StaffPortalProps> = ({
   };
 
   // Manager State
+  const [showHamburgerMenu, setShowHamburgerMenu] = useState(false);
   const [selectedTechForJob, setSelectedTechForJob] = useState<{ [srvId: string]: string }>({});
-  const [managerTab, setManagerTab] = useState<'requests' | 'roster' | 'payments' | 'gate_stream' | 'inventory'>('requests');
+  const [managerTab, setManagerTab] = useState<'requests' | 'roster' | 'payments' | 'gate_stream' | 'inventory' | 'home_services'>('requests');
   const [managerViewMode, setManagerViewMode] = useState<'kanban' | 'table'>('kanban');
   const [managerSearchQuery, setManagerSearchQuery] = useState('');
   const [showNewJobModal, setShowNewJobModal] = useState(false);
@@ -1225,100 +1228,318 @@ Format as a polite, clean, structured layout. Avoid deep developer jargon.`;
             </div>
           )}
 
-          {/* Primary Action Cards - Three Compact Cards in One Horizontal Row */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
-            {/* Card 1 — Connect Email */}
-            <div
-              onClick={async () => {
-                try {
-                  await googleSignIn();
-                } catch (e) {
-                  console.error(e);
-                }
-              }}
-              className="group relative overflow-hidden bg-gradient-to-br from-emerald-500 via-emerald-600 to-teal-700 text-white p-4.5 rounded-[18px] shadow-sm hover:shadow-lg transition-all duration-200 hover:-translate-y-1 cursor-pointer flex flex-col justify-between min-h-[110px]"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <div className="p-2.5 rounded-xl bg-white/20 backdrop-blur-xs text-white shrink-0">
-                    <Mail className="w-5 h-5" />
+          {/* Hamburger Drawer Side Menu */}
+          {showHamburgerMenu && (
+            <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex justify-start animate-fadeIn">
+              <div className="bg-slate-900 text-white w-full max-w-sm h-full shadow-2xl flex flex-col justify-between border-r border-slate-800 animate-slide-right overflow-y-auto">
+                {/* Drawer Header */}
+                <div className="p-5 border-b border-slate-800 flex items-center justify-between bg-slate-950/60">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white shadow-md">
+                      <Wrench className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="font-extrabold text-sm text-white">Staff Management Hub</h3>
+                      <p className="text-3xs text-slate-400 font-mono">Service Manager Navigation</p>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="text-sm font-extrabold text-white leading-tight">Connect Gmail</h3>
-                    <p className="text-3xs text-emerald-100 font-medium line-clamp-1 mt-0.5">
-                      Connect your business Gmail for notifications.
-                    </p>
+                  <button
+                    onClick={() => setShowHamburgerMenu(false)}
+                    className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition cursor-pointer"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                {/* Drawer Body - Quick Actions & View Modules */}
+                <div className="p-4 space-y-6 flex-1 overflow-y-auto">
+                  {/* Quick Actions Section */}
+                  <div className="space-y-2.5">
+                    <span className="text-3xs font-mono font-bold uppercase tracking-wider text-indigo-400 px-2 block">
+                      ⚡ Quick Actions & Workflows
+                    </span>
+
+                    {/* 1. Connect Email / Gmail */}
+                    <div
+                      onClick={async () => {
+                        try {
+                          await googleSignIn();
+                        } catch (e) {
+                          console.error(e);
+                        }
+                      }}
+                      className="p-3.5 rounded-2xl bg-gradient-to-r from-emerald-950/80 to-teal-950/60 border border-emerald-500/30 hover:border-emerald-400 transition cursor-pointer flex items-center justify-between gap-3 group"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="p-2.5 rounded-xl bg-emerald-500/20 text-emerald-400 shrink-0">
+                          <Mail className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <h4 className="text-xs font-bold text-white group-hover:text-emerald-300 transition">
+                            {googleUser ? 'Gmail Connected ✓' : 'Connect Email'}
+                          </h4>
+                          <p className="text-3xs text-slate-400 line-clamp-1">
+                            {googleUser ? googleUser.email : 'Link business Gmail for auto dispatch'}
+                          </p>
+                        </div>
+                      </div>
+                      <span className="text-3xs font-bold px-2 py-1 rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 shrink-0">
+                        {googleUser ? 'Linked' : 'Connect'}
+                      </span>
+                    </div>
+
+                    {/* 2. Create Job Card */}
+                    <div
+                      onClick={() => {
+                        setShowNewJobModal(true);
+                        setShowHamburgerMenu(false);
+                      }}
+                      className="p-3.5 rounded-2xl bg-gradient-to-r from-purple-950/80 to-indigo-950/60 border border-purple-500/30 hover:border-purple-400 transition cursor-pointer flex items-center justify-between gap-3 group"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="p-2.5 rounded-xl bg-purple-500/20 text-purple-300 shrink-0">
+                          <PlusSquare className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <h4 className="text-xs font-bold text-white group-hover:text-purple-300 transition">Create Job Card</h4>
+                          <p className="text-3xs text-slate-400">Register new repair or maintenance job</p>
+                        </div>
+                      </div>
+                      <span className="text-3xs font-bold px-2.5 py-1 rounded-lg bg-purple-600 text-white shrink-0">
+                        + New
+                      </span>
+                    </div>
+
+                    {/* 3. Auto Dispatch Jobs */}
+                    <div
+                      onClick={() => {
+                        handleAutoDispatch();
+                        setShowHamburgerMenu(false);
+                      }}
+                      className="p-3.5 rounded-2xl bg-gradient-to-r from-amber-950/80 to-orange-950/60 border border-amber-500/30 hover:border-amber-400 transition cursor-pointer flex items-center justify-between gap-3 group"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="p-2.5 rounded-xl bg-amber-500/20 text-amber-400 shrink-0">
+                          <Zap className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <h4 className="text-xs font-bold text-white group-hover:text-amber-300 transition">Auto Dispatch Jobs</h4>
+                          <p className="text-3xs text-slate-400">Automatically assign pending jobs to mechanics</p>
+                        </div>
+                      </div>
+                      <ArrowRight className="w-4 h-4 text-amber-400 group-hover:translate-x-1 transition-transform" />
+                    </div>
+                  </div>
+
+                  {/* View Navigation Modules */}
+                  <div className="space-y-1.5 pt-3 border-t border-slate-800">
+                    <span className="text-3xs font-mono font-bold uppercase tracking-wider text-slate-400 px-2 block mb-1">
+                      📌 Portal View Modules
+                    </span>
+
+                    {/* Home Service Requests */}
+                    <button
+                      onClick={() => {
+                        setManagerTab('home_services');
+                        setShowHamburgerMenu(false);
+                      }}
+                      className={`w-full p-3 rounded-2xl transition cursor-pointer flex items-center justify-between gap-3 ${
+                        managerTab === 'home_services'
+                          ? 'bg-sky-600 text-white font-bold shadow-md'
+                          : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <Home className="w-4 h-4 text-sky-400" />
+                        <div className="text-left">
+                          <span className="text-xs font-bold block">Home Service Requests</span>
+                          <span className="text-3xs text-slate-400 block font-normal">Doorstep & workplace vehicle servicing</span>
+                        </div>
+                      </div>
+                      <span className="text-3xs font-mono font-bold px-2 py-0.5 rounded bg-sky-500/20 text-sky-300 border border-sky-500/30">
+                        {services.filter((s) => s.isHomeService || s.homeAddress).length || 'Doorstep'}
+                      </span>
+                    </button>
+
+                    {/* Technician Roster */}
+                    <button
+                      onClick={() => {
+                        setManagerTab('roster');
+                        setShowHamburgerMenu(false);
+                      }}
+                      className={`w-full p-3 rounded-2xl transition cursor-pointer flex items-center justify-between gap-3 ${
+                        managerTab === 'roster'
+                          ? 'bg-purple-600 text-white font-bold shadow-md'
+                          : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <Users className="w-4 h-4 text-purple-400" />
+                        <div className="text-left">
+                          <span className="text-xs font-bold block">Technician Roster</span>
+                          <span className="text-3xs text-slate-400 block font-normal">Mechanic duty assignments & workload</span>
+                        </div>
+                      </div>
+                      <span className="text-3xs font-mono font-bold px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                        {users.filter((u) => u.role === UserRole.SERVICE_TECHNICIAN).length} Techs
+                      </span>
+                    </button>
+
+                    {/* Payment Ledger */}
+                    <button
+                      onClick={() => {
+                        setManagerTab('payments');
+                        setShowHamburgerMenu(false);
+                      }}
+                      className={`w-full p-3 rounded-2xl transition cursor-pointer flex items-center justify-between gap-3 ${
+                        managerTab === 'payments'
+                          ? 'bg-emerald-600 text-white font-bold shadow-md'
+                          : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <CreditCard className="w-4 h-4 text-emerald-400" />
+                        <div className="text-left">
+                          <span className="text-xs font-bold block">Payment Ledger</span>
+                          <span className="text-3xs text-slate-400 block font-normal">Invoiced revenue & transactions</span>
+                        </div>
+                      </div>
+                      <span className="text-3xs font-mono font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                        {payments.length} Invoices
+                      </span>
+                    </button>
+
+                    {/* Service Queue */}
+                    <button
+                      onClick={() => {
+                        setManagerTab('requests');
+                        setShowHamburgerMenu(false);
+                      }}
+                      className={`w-full p-3 rounded-2xl transition cursor-pointer flex items-center justify-between gap-3 ${
+                        managerTab === 'requests'
+                          ? 'bg-indigo-600 text-white font-bold shadow-md'
+                          : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <Wrench className="w-4 h-4 text-amber-400" />
+                        <div className="text-left">
+                          <span className="text-xs font-bold block">Service Queue</span>
+                          <span className="text-3xs text-slate-400 block font-normal">Active workshop repairs & maintenance</span>
+                        </div>
+                      </div>
+                      <span className="text-3xs font-mono font-bold px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                        {services.length} Jobs
+                      </span>
+                    </button>
+
+                    {/* Gate Stream */}
+                    <button
+                      onClick={() => {
+                        setManagerTab('gate_stream');
+                        setShowHamburgerMenu(false);
+                      }}
+                      className={`w-full p-3 rounded-2xl transition cursor-pointer flex items-center justify-between gap-3 ${
+                        managerTab === 'gate_stream'
+                          ? 'bg-indigo-600 text-white font-bold shadow-md'
+                          : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <Activity className="w-4 h-4 text-rose-400" />
+                        <div className="text-left">
+                          <span className="text-xs font-bold block">Gate Stream</span>
+                          <span className="text-3xs text-slate-400 block font-normal">Real-time gate pass & vehicle entries</span>
+                        </div>
+                      </div>
+                      {notifications.length > 0 && (
+                        <span className="text-3xs font-mono font-bold px-2 py-0.5 rounded-full bg-rose-500 text-white">
+                          {notifications.length}
+                        </span>
+                      )}
+                    </button>
+
+                    {/* Inventory */}
+                    <button
+                      onClick={() => {
+                        setManagerTab('inventory');
+                        setShowHamburgerMenu(false);
+                      }}
+                      className={`w-full p-3 rounded-2xl transition cursor-pointer flex items-center justify-between gap-3 ${
+                        managerTab === 'inventory'
+                          ? 'bg-indigo-600 text-white font-bold shadow-md'
+                          : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <Package className="w-4 h-4 text-teal-400" />
+                        <div className="text-left">
+                          <span className="text-xs font-bold block">Parts & Inventory</span>
+                          <span className="text-3xs text-slate-400 block font-normal">Spare parts stock & inventory control</span>
+                        </div>
+                      </div>
+                      <span className="text-3xs font-mono font-bold px-2 py-0.5 rounded bg-teal-500/20 text-teal-300 border border-teal-500/30">
+                        {inventory.length} Parts
+                      </span>
+                    </button>
                   </div>
                 </div>
-              </div>
-              <div className="flex items-center justify-between border-t border-white/15 pt-2.5 mt-3">
-                <span className="text-2xs font-extrabold text-white flex items-center gap-1 group-hover:underline">
-                  Connect Account
-                </span>
-                <div className="w-6 h-6 rounded-full bg-white/20 group-hover:bg-white/30 flex items-center justify-center transition-colors">
-                  <ArrowRight className="w-3.5 h-3.5 text-white" />
+
+                {/* Drawer Footer */}
+                <div className="p-4 border-t border-slate-800 bg-slate-950/80 flex items-center justify-between text-xs text-slate-400">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                    <span className="text-3xs font-mono">Service Portal Active</span>
+                  </div>
+                  <button
+                    onClick={() => {
+                      onRefreshAll();
+                      setShowHamburgerMenu(false);
+                    }}
+                    className="text-3xs font-bold text-indigo-400 hover:underline flex items-center gap-1 cursor-pointer"
+                  >
+                    <RefreshCw className="w-3 h-3" /> Refresh Data
+                  </button>
                 </div>
               </div>
             </div>
+          )}
 
-            {/* Card 2 — Create Job Card */}
-            <div
-              onClick={() => setShowNewJobModal(true)}
-              className="group relative overflow-hidden bg-gradient-to-br from-purple-600 via-purple-700 to-indigo-700 text-white p-4.5 rounded-[18px] shadow-sm hover:shadow-lg transition-all duration-200 hover:-translate-y-1 cursor-pointer flex flex-col justify-between min-h-[110px]"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <div className="p-2.5 rounded-xl bg-white/20 backdrop-blur-xs text-white shrink-0">
-                    <PlusSquare className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-extrabold text-white leading-tight">Create Job Card</h3>
-                    <p className="text-3xs text-purple-100 font-medium line-clamp-1 mt-0.5">
-                      Register a new repair or maintenance job.
-                    </p>
-                  </div>
-                </div>
-              </div>
-              <div className="flex items-center justify-between border-t border-white/15 pt-2.5 mt-3">
-                <span className="text-2xs font-extrabold text-white flex items-center gap-1 group-hover:underline">
-                  Create
-                </span>
-                <div className="w-6 h-6 rounded-full bg-white/20 group-hover:bg-white/30 flex items-center justify-center transition-colors">
-                  <ArrowRight className="w-3.5 h-3.5 text-white" />
-                </div>
+          {/* Redesigned Manager Header Command Bar */}
+          <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 text-white rounded-[20px] p-4 shadow-md border border-slate-700/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3.5">
+              {/* Primary Hamburger Menu Button */}
+              <button
+                onClick={() => setShowHamburgerMenu(true)}
+                className="p-3 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg transition-all duration-200 cursor-pointer flex items-center gap-2.5 group ring-2 ring-indigo-400/40 hover:scale-105"
+                title="Open Workflow Hamburger Menu"
+              >
+                <Menu className="w-5 h-5 text-white group-hover:rotate-90 transition-transform duration-300" />
+                <span className="text-xs font-black tracking-wider uppercase pr-1 font-mono">☰ Open Menu</span>
+              </button>
+
+              <div>
+                <h3 className="text-sm sm:text-base font-black text-white leading-tight">Service Operations Command</h3>
+                <p className="text-3xs text-slate-300 font-medium">All actions & workflow views are housed in the ☰ Menu button</p>
               </div>
             </div>
 
-            {/* Card 3 — Auto Dispatch */}
-            <div
-              onClick={handleAutoDispatch}
-              className="group relative overflow-hidden bg-gradient-to-br from-amber-500 via-orange-500 to-amber-600 text-white p-4.5 rounded-[18px] shadow-sm hover:shadow-lg transition-all duration-200 hover:-translate-y-1 cursor-pointer flex flex-col justify-between min-h-[110px]"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <div className="p-2.5 rounded-xl bg-white/20 backdrop-blur-xs text-white shrink-0">
-                    <Zap className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-extrabold text-white leading-tight">Auto Dispatch Jobs</h3>
-                    <p className="text-3xs text-amber-100 font-medium line-clamp-1 mt-0.5">
-                      Automatically assign jobs to available technicians.
-                    </p>
-                  </div>
-                </div>
-              </div>
-              <div className="flex items-center justify-between border-t border-white/15 pt-2.5 mt-3">
-                <span className="text-2xs font-extrabold text-white flex items-center gap-1 group-hover:underline">
-                  Configure
-                </span>
-                <div className="w-6 h-6 rounded-full bg-white/20 group-hover:bg-white/30 flex items-center justify-center transition-colors">
-                  <ArrowRight className="w-3.5 h-3.5 text-white" />
-                </div>
-              </div>
+            {/* Active Module Status Badge */}
+            <div className="flex items-center gap-2">
+              <span className="text-3xs font-mono font-bold uppercase text-slate-400">Current View:</span>
+              <span className="text-xs font-mono font-extrabold px-3 py-1.5 rounded-xl bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-indigo-400 animate-pulse" />
+                {managerTab === 'requests' && 'Service Queue'}
+                {managerTab === 'home_services' && 'Home Services'}
+                {managerTab === 'roster' && 'Technician Roster'}
+                {managerTab === 'payments' && 'Payment Ledger'}
+                {managerTab === 'gate_stream' && 'Gate Stream'}
+                {managerTab === 'inventory' && 'Parts & Inventory'}
+              </span>
             </div>
           </div>
 
-          {/* Dashboard Statistics — Single Long Horizontal Summary Card */}
+          {/* Dashboard Statistics — Summary Metrics Row */}
           <div className="bg-white border border-slate-200/80 rounded-[18px] shadow-xs p-3 sm:p-4 overflow-x-auto">
             <div className="grid grid-cols-2 md:grid-cols-5 divide-y md:divide-y-0 md:divide-x divide-slate-100 min-w-[620px] md:min-w-0">
               
@@ -1415,73 +1636,21 @@ Format as a polite, clean, structured layout. Avoid deep developer jargon.`;
             </div>
           </div>
 
-          {/* Manager Navigation Bar & View Options */}
-          <div className="bg-white border border-slate-200/80 rounded-2xl p-2 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-1 overflow-x-auto p-1">
-              <button
-                onClick={() => setManagerTab('requests')}
-                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 whitespace-nowrap cursor-pointer ${
-                  managerTab === 'requests'
-                    ? 'bg-slate-900 text-white shadow-sm'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                }`}
-              >
-                <Wrench className="w-3.5 h-3.5" />
-                Service Queue ({services.length})
-              </button>
-
-              <button
-                onClick={() => setManagerTab('roster')}
-                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 whitespace-nowrap cursor-pointer ${
-                  managerTab === 'roster'
-                    ? 'bg-slate-900 text-white shadow-sm'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                }`}
-              >
-                <Users className="w-3.5 h-3.5" />
-                Technician Roster ({users.filter((u) => u.role === UserRole.SERVICE_TECHNICIAN).length})
-              </button>
-
-              <button
-                onClick={() => setManagerTab('gate_stream')}
-                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 whitespace-nowrap cursor-pointer ${
-                  managerTab === 'gate_stream'
-                    ? 'bg-slate-900 text-white shadow-sm'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                }`}
-              >
-                <Activity className="w-3.5 h-3.5 text-amber-400" />
-                Gate Stream
-                {notifications.length > 0 && (
-                  <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold bg-amber-500 text-white">
-                    {notifications.length}
-                  </span>
-                )}
-              </button>
-
-              <button
-                onClick={() => setManagerTab('payments')}
-                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 whitespace-nowrap cursor-pointer ${
-                  managerTab === 'payments'
-                    ? 'bg-slate-900 text-white shadow-sm'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                }`}
-              >
-                <CreditCard className="w-3.5 h-3.5" />
-                Payments Ledger ({payments.length})
-              </button>
-
-              <button
-                onClick={() => setManagerTab('inventory')}
-                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 whitespace-nowrap cursor-pointer ${
-                  managerTab === 'inventory'
-                    ? 'bg-slate-900 text-white shadow-sm'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                }`}
-              >
-                <Package className="w-3.5 h-3.5" />
-                Parts & Inventory ({inventory.length})
-              </button>
+          {/* Manager Module Bar & Controls */}
+          <div className="bg-white border border-slate-200/80 rounded-2xl p-3 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5 overflow-x-auto p-1">
+              {/* Display Active Module Badge cleanly */}
+              <div className="flex items-center gap-2 text-xs font-extrabold text-slate-800 shrink-0">
+                <span className="text-3xs font-mono text-slate-400 uppercase">Active Section:</span>
+                <span className="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-900 font-mono text-2xs font-bold border border-slate-200">
+                  {managerTab === 'requests' && '🛠️ Service Queue'}
+                  {managerTab === 'home_services' && '🏠 Home Services'}
+                  {managerTab === 'roster' && '👨‍🔧 Technician Roster'}
+                  {managerTab === 'payments' && '💳 Payment Ledger'}
+                  {managerTab === 'gate_stream' && '📡 Gate Stream'}
+                  {managerTab === 'inventory' && '📦 Parts & Inventory'}
+                </span>
+              </div>
             </div>
 
             {/* Search Filter & View Mode Toggle for Requests */}
@@ -1883,7 +2052,143 @@ Format as a polite, clean, structured layout. Avoid deep developer jargon.`;
             );
           })()}
 
-          {/* TAB 2: REGISTERED STAFF DIRECTORY & ROSTER (TECHNICIANS & PARKING ATTENDANTS) */}
+          {/* TAB: HOME SERVICE REQUESTS HUB */}
+          {managerTab === 'home_services' && (() => {
+            const homeServicesList = services.filter(
+              (s) =>
+                s.isHomeService ||
+                s.homeAddress ||
+                (s.diagnosticNotes && s.diagnosticNotes.toLowerCase().includes('landmark')) ||
+                (s.serviceType && s.serviceType.toLowerCase().includes('home'))
+            );
+
+            return (
+              <div className="space-y-4 animate-fadeIn">
+                {/* Home Service Header Banner */}
+                <div className="bg-gradient-to-r from-sky-900 via-slate-900 to-indigo-950 border border-sky-500/30 text-white rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm">
+                  <div className="flex items-center gap-3.5">
+                    <div className="p-3 rounded-2xl bg-sky-500/20 text-sky-300 border border-sky-500/30">
+                      <Home className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <h3 className="font-extrabold text-base text-white">Doorstep & Workplace Home Service Requests ({homeServicesList.length})</h3>
+                      <p className="text-3xs text-sky-200">Mobile technician dispatches directly to customer home & workplace locations</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setShowNewJobModal(true)}
+                    className="px-4 py-2 bg-sky-500 hover:bg-sky-400 text-slate-950 font-black text-xs rounded-xl shadow-md transition cursor-pointer flex items-center gap-1.5 shrink-0"
+                  >
+                    <PlusSquare className="w-4 h-4" />
+                    <span>Create Home Service Card</span>
+                  </button>
+                </div>
+
+                {homeServicesList.length === 0 ? (
+                  <div className="bg-white border border-slate-200 rounded-2xl p-10 text-center space-y-3 shadow-xs">
+                    <Home className="w-12 h-12 text-slate-300 mx-auto" />
+                    <h4 className="text-sm font-black text-slate-800">No Home Service Requests Currently Logged</h4>
+                    <p className="text-xs text-slate-500 max-w-md mx-auto">
+                      Customers can select doorstep servicing from their account portal, or managers can log home service requests using the button above.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {homeServicesList.map((srv) => {
+                      const veh = vehicles.find((v) => v.id === srv.vehicleId);
+                      const cust = users.find((u) => u.id === srv.customerId);
+                      const tech = users.find((u) => u.id === srv.technicianId);
+
+                      return (
+                        <div
+                          key={srv.id}
+                          className="bg-white border border-slate-200 rounded-2xl p-4.5 space-y-3.5 shadow-xs hover:border-sky-400 hover:shadow-md transition-all duration-200"
+                        >
+                          <div className="flex items-start justify-between gap-2 border-b border-slate-100 pb-3">
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-2xs font-mono font-extrabold text-sky-700 bg-sky-50 px-2 py-0.5 rounded border border-sky-200 uppercase">
+                                  🏠 Doorstep Service
+                                </span>
+                                <span className="text-3xs font-mono font-bold text-slate-400">
+                                  {srv.id.toUpperCase()}
+                                </span>
+                              </div>
+                              <h4 className="font-extrabold text-sm text-slate-900 mt-1">
+                                {srv.serviceType}
+                              </h4>
+                            </div>
+                            <span className="text-xs font-black font-mono text-slate-900 bg-slate-100 px-2.5 py-1 rounded-xl">
+                              UGX {(srv.cost || 0).toLocaleString()}
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-1 gap-2 text-xs">
+                            <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100 space-y-1">
+                              <span className="text-3xs font-mono text-slate-400 block uppercase font-bold">Vehicle & Customer</span>
+                              <p className="font-bold text-slate-900">
+                                {veh ? `${veh.make} ${veh.model} (${veh.registrationNumber})` : 'Vehicle Specified'}
+                              </p>
+                              <p className="text-3xs text-slate-600">
+                                Customer: <strong className="text-slate-800">{cust?.name || 'Registered Driver'}</strong> ({srv.contactPhone || cust?.phone || '+256 772 123456'})
+                              </p>
+                            </div>
+
+                            <div className="bg-sky-50/60 p-2.5 rounded-xl border border-sky-100 space-y-1">
+                              <span className="text-3xs font-mono text-sky-800 block uppercase font-bold">Location & Address</span>
+                              <p className="font-bold text-slate-900 text-xs">
+                                📍 {srv.homeAddress || 'Kampala Customer Residence'}
+                              </p>
+                              {srv.homeLandmark && (
+                                <p className="text-3xs text-slate-600">
+                                  Landmark: <strong className="text-slate-800">{srv.homeLandmark}</strong>
+                                </p>
+                              )}
+                              {srv.diagnosticNotes && (
+                                <p className="text-3xs text-slate-500 italic">
+                                  &quot;{srv.diagnosticNotes}&quot;
+                                </p>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Technician Mobile Dispatch Selector */}
+                          <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2 text-xs">
+                            <span className="text-3xs font-bold text-slate-500">Mobile Mechanic:</span>
+                            <div className="flex items-center gap-1.5 flex-1 max-w-xs">
+                              <select
+                                value={selectedTechForJob[srv.id] || srv.technicianId || ''}
+                                onChange={(e) =>
+                                  setSelectedTechForJob({ ...selectedTechForJob, [srv.id]: e.target.value })
+                                }
+                                className="text-2xs p-1.5 border border-slate-200 rounded-lg bg-white font-medium w-full"
+                              >
+                                <option value="">-- Assign Mobile Tech --</option>
+                                {users
+                                  .filter((u) => u.role === UserRole.SERVICE_TECHNICIAN)
+                                  .map((techUser) => (
+                                    <option key={techUser.id} value={techUser.id}>
+                                      👨‍🔧 {techUser.name} ({techUser.specialty || 'Mechanic'})
+                                    </option>
+                                  ))}
+                              </select>
+                              <button
+                                onClick={() => handleAssignTechnician(srv.id)}
+                                disabled={!selectedTechForJob[srv.id] && !srv.technicianId}
+                                className="px-3 py-1.5 bg-sky-600 hover:bg-sky-500 disabled:bg-slate-200 text-white font-bold text-3xs rounded-lg transition cursor-pointer shrink-0"
+                              >
+                                {srv.technicianId ? 'Update' : 'Dispatch'}
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
           {managerTab === 'roster' && (
             <div className="space-y-6">
               <div className="bg-white border border-slate-200/80 rounded-2xl p-4 sm:p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -1907,7 +2212,66 @@ Format as a polite, clean, structured layout. Avoid deep developer jargon.`;
                 </button>
               </div>
 
-              {/* Section 1: Registered Service Technicians */}
+              {/* Systems Manager Verification Control Box */}
+              {(() => {
+                const unverifiedUsers = users.filter((u) => u.isVerified === false);
+                if (unverifiedUsers.length === 0) return null;
+                return (
+                  <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="p-1.5 bg-amber-500/20 text-amber-700 rounded-lg font-bold text-xs">
+                          <ShieldCheck className="w-4 h-4 text-amber-600" />
+                        </span>
+                        <div>
+                          <h4 className="font-extrabold text-sm text-slate-900">
+                            Pending Account Verifications ({unverifiedUsers.length})
+                          </h4>
+                          <p className="text-xs text-slate-500">
+                            Systems Manager manual verification control for unverified user accounts.
+                          </p>
+                        </div>
+                      </div>
+                      <span className="px-2.5 py-1 bg-amber-100 text-amber-800 text-3xs font-mono font-bold rounded-full border border-amber-200">
+                        Action Required
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+                      {unverifiedUsers.map((u) => (
+                        <div
+                          key={u.id}
+                          className="bg-white border border-amber-200 rounded-xl p-3 flex items-center justify-between gap-3 shadow-2xs"
+                        >
+                          <div>
+                            <div className="font-bold text-xs text-slate-900">{u.name}</div>
+                            <div className="text-3xs font-mono text-slate-500">{u.email}</div>
+                            <span className="text-4xs font-mono font-bold bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded mt-1 inline-block">
+                              {u.role}
+                            </span>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              try {
+                                const res = await fetch(`/api/users/${u.id}/verify`, { method: 'PUT' });
+                                if (res.ok && onRefreshAll) {
+                                  onRefreshAll();
+                                }
+                              } catch {}
+                            }}
+                            className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-3xs rounded-lg transition cursor-pointer flex items-center gap-1 shrink-0 shadow-xs"
+                          >
+                            <ShieldCheck className="w-3.5 h-3.5" />
+                            <span>Verify Account</span>
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
               <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-xs space-y-4">
                 <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                   <div className="flex items-center gap-2">
@@ -3075,33 +3439,73 @@ Format as a polite, clean, structured layout. Avoid deep developer jargon.`;
                           <tr>
                             <th className="px-3 py-2">Name</th>
                             <th className="px-3 py-2">Role assigned</th>
+                            <th className="px-3 py-2">Verification Status</th>
                             <th className="px-3 py-2">Contacts</th>
+                            <th className="px-3 py-2 text-right">Manager Action</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {filteredUsers.map((u) => (
-                            <tr key={u.id} className="border-b border-slate-800/60 hover:bg-slate-800/40 transition">
-                              <td className="px-3 py-3">
-                                <div className="font-bold text-white">{u.name}</div>
-                                <div className="text-4xs font-mono text-slate-500">{u.id}</div>
-                              </td>
-                              <td className="px-3 py-3">
-                                <span className={`px-2 py-0.5 rounded font-mono text-3xs font-bold border ${
-                                  u.role === UserRole.ADMINISTRATOR ? 'bg-indigo-500/10 text-indigo-400 border-indigo-500/30' :
-                                  u.role === UserRole.SERVICE_MANAGER ? 'bg-sky-500/10 text-sky-400 border-sky-500/30' :
-                                  u.role === UserRole.SERVICE_TECHNICIAN ? 'bg-amber-500/10 text-amber-400 border-amber-500/30' :
-                                  u.role === UserRole.PARKING_ATTENDANT ? 'bg-purple-500/10 text-purple-400 border-purple-500/30' :
-                                  'bg-slate-800 text-slate-300 border-slate-700'
-                                }`}>
-                                  {u.role.toUpperCase()}
-                                </span>
-                              </td>
-                              <td className="px-3 py-3 font-mono text-3xs text-slate-400">
-                                <div>{u.email}</div>
-                                <div>{u.phone}</div>
-                              </td>
-                            </tr>
-                          ))}
+                          {filteredUsers.map((u) => {
+                            const isVerified = u.isVerified !== false;
+                            return (
+                              <tr key={u.id} className="border-b border-slate-800/60 hover:bg-slate-800/40 transition">
+                                <td className="px-3 py-3">
+                                  <div className="font-bold text-white">{u.name}</div>
+                                  <div className="text-4xs font-mono text-slate-500">{u.id}</div>
+                                </td>
+                                <td className="px-3 py-3">
+                                  <span className={`px-2 py-0.5 rounded font-mono text-3xs font-bold border ${
+                                    u.role === UserRole.ADMINISTRATOR ? 'bg-indigo-500/10 text-indigo-400 border-indigo-500/30' :
+                                    u.role === UserRole.SERVICE_MANAGER ? 'bg-sky-500/10 text-sky-400 border-sky-500/30' :
+                                    u.role === UserRole.SERVICE_TECHNICIAN ? 'bg-amber-500/10 text-amber-400 border-amber-500/30' :
+                                    u.role === UserRole.PARKING_ATTENDANT ? 'bg-purple-500/10 text-purple-400 border-purple-500/30' :
+                                    'bg-slate-800 text-slate-300 border-slate-700'
+                                  }`}>
+                                    {u.role.toUpperCase()}
+                                  </span>
+                                </td>
+                                <td className="px-3 py-3 font-mono text-3xs">
+                                  {isVerified ? (
+                                    <span className="inline-flex items-center gap-1 text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 rounded-full font-bold">
+                                      <CheckCircle2 className="w-3 h-3" />
+                                      Verified
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1 text-amber-400 bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded-full font-bold">
+                                      <Mail className="w-3 h-3 animate-pulse" />
+                                      Pending Verification
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="px-3 py-3 font-mono text-3xs text-slate-400">
+                                  <div>{u.email}</div>
+                                  <div>{u.phone}</div>
+                                </td>
+                                <td className="px-3 py-3 text-right">
+                                  {!isVerified ? (
+                                    <button
+                                      type="button"
+                                      onClick={async () => {
+                                        try {
+                                          const res = await fetch(`/api/users/${u.id}/verify`, { method: 'PUT' });
+                                          if (res.ok) {
+                                            if (onRefreshAll) onRefreshAll();
+                                          }
+                                        } catch {}
+                                      }}
+                                      className="px-2.5 py-1 bg-amber-600 hover:bg-amber-500 text-white font-bold text-3xs rounded-lg transition cursor-pointer inline-flex items-center gap-1 shadow-sm"
+                                      title="Systems Manager verify account"
+                                    >
+                                      <ShieldCheck className="w-3 h-3" />
+                                      Verify Account
+                                    </button>
+                                  ) : (
+                                    <span className="text-3xs text-slate-500 font-mono">Account Verified</span>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
                         </tbody>
                       </table>
                     </div>
