@@ -915,19 +915,19 @@ async function sendVerificationEmail(toEmail: string, userName: string, code: st
   const port = parseInt(process.env.SMTP_PORT || '587', 10);
   const user = process.env.SMTP_USER;
   const pass = process.env.SMTP_PASS;
-  const from = process.env.SMTP_FROM || '"UG-PARK Security" <no-reply@ugpark.com>';
+  const from = process.env.SMTP_FROM || '"WELILE CAR HUB Security" <no-reply@welilecarhub.com>';
 
   const htmlContent = `
     <div style="font-family: Arial, sans-serif; max-width: 550px; margin: 0 auto; padding: 25px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff;">
-      <h2 style="color: #0f172a; margin-top: 0;">UG-PARK Account Verification Code</h2>
+      <h2 style="color: #0f172a; margin-top: 0;">WELILE CAR HUB Account Verification</h2>
       <p style="color: #334155; font-size: 15px;">Hello <strong>${userName || 'Valued User'}</strong>,</p>
-      <p style="color: #334155; font-size: 15px;">Thank you for signing up for UG-PARK. Your 6-digit email verification security code is:</p>
-      <div style="background-color: #0f172a; padding: 20px; border-radius: 10px; text-align: center; margin: 20px 0;">
-        <span style="font-size: 34px; font-weight: 800; letter-spacing: 8px; color: #38bdf8; font-family: monospace;">${code}</span>
+      <p style="color: #334155; font-size: 15px;">Thank you for signing up for WELILE CAR HUB. Please click the button below to confirm your email and activate your account:</p>
+      <div style="padding: 20px 0; text-align: center;">
+        <a href="${process.env.APP_URL || 'http://localhost:3000'}/confirm-email?email=${encodeURIComponent(toEmail)}&code=${code}" style="background-color: #0f172a; color: #ffffff; padding: 14px 28px; text-decoration: none; border-radius: 10px; font-weight: bold; font-size: 15px; display: inline-block;">Confirm Sign Up with Supabase</a>
       </div>
-      <p style="color: #64748b; font-size: 13px;">Enter this 6-digit code on the sign-in screen to activate your account.</p>
+      <p style="color: #64748b; font-size: 13px; text-align: center;">Or enter verification code in app: <strong style="color: #0f172a; font-family: monospace;">${code}</strong></p>
       <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 20px 0;" />
-      <p style="color: #94a3b8; font-size: 11px; text-align: center;">UG-PARK Integrated Smart Mobility & Service Portal</p>
+      <p style="color: #94a3b8; font-size: 11px; text-align: center;">WELILE CAR HUB Smart Mobility & Vehicle Service Management</p>
     </div>
   `;
 
@@ -942,11 +942,11 @@ async function sendVerificationEmail(toEmail: string, userName: string, code: st
       await transporter.sendMail({
         from,
         to: toEmail,
-        subject: `Your UG-PARK Email Verification Code: ${code}`,
-        text: `Hello ${userName}, Your UG-PARK 6-digit email verification code is: ${code}`,
+        subject: `Confirm Sign Up - WELILE CAR HUB`,
+        text: `Hello ${userName}, Please confirm your sign up for WELILE CAR HUB by opening your verification link or entering code: ${code}`,
         html: htmlContent,
       });
-      console.log(`✉️ Real SMTP Verification Email sent successfully to ${toEmail} with code ${code}`);
+      console.log(`✉️ Real SMTP Verification Email sent successfully to ${toEmail}`);
       return { success: true, method: 'smtp' };
     } catch (err) {
       console.error(`❌ Error sending email via SMTP to ${toEmail}:`, err);
@@ -955,10 +955,10 @@ async function sendVerificationEmail(toEmail: string, userName: string, code: st
 
   // Fallback / Log notification if SMTP credentials are not set
   console.log(`=======================================================`);
-  console.log(`✉️ [VERIFICATION EMAIL SENT TO REGISTRATION ADDRESS]`);
+  console.log(`✉️ [VERIFICATION EMAIL DISPATCH LOG]`);
   console.log(`To: ${toEmail}`);
   console.log(`Recipient Name: ${userName}`);
-  console.log(`Subject: Your UG-PARK Verification Code: ${code}`);
+  console.log(`Subject: Confirm Sign Up - WELILE CAR HUB`);
   console.log(`Verification Code: ${code}`);
   console.log(`Verification Token: ${token}`);
   console.log(`=======================================================`);

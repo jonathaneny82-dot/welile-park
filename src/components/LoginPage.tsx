@@ -660,7 +660,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin, onGoToConf
             {unverifiedAccount && (
               <div className="p-7 sm:p-9 bg-white border border-slate-100 rounded-[32px] space-y-6 text-center animate-in fade-in zoom-in-95 duration-200 shadow-2xl text-slate-900 relative overflow-hidden">
                 
-                {/* Header Icon with Sparkle */}
+                {/* Header Icon */}
                 <div className="relative w-16 h-16 mx-auto">
                   <div className="w-16 h-16 bg-slate-950 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-slate-950/15">
                     <Mail className="w-8 h-8 text-white stroke-[1.75]" />
@@ -672,18 +672,18 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin, onGoToConf
 
                 {/* Title & Email Chip */}
                 <div className="space-y-2">
-                  <h3 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">Verify your email</h3>
+                  <h3 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">Check your email</h3>
                   <div className="inline-block px-3.5 py-1.5 rounded-full bg-slate-100 text-slate-800 text-xs font-bold font-mono border border-slate-200">
                     {unverifiedAccount.email}
                   </div>
                 </div>
 
-                {/* Supabase Confirmation Guidance */}
+                {/* Clear Guidance */}
                 <p className="text-xs sm:text-sm text-slate-600 leading-relaxed font-normal max-w-sm mx-auto">
-                  A Supabase confirmation link has been sent to your email address. Click the link in your inbox or tap below to confirm sign up.
+                  We have dispatched a Supabase sign up confirmation link to your email. Please open your email inbox and click the link to confirm your account.
                 </p>
 
-                {/* Change Email Link / Form */}
+                {/* Change Email Option */}
                 <div>
                   {!isEditingEmail ? (
                     <button
@@ -694,7 +694,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin, onGoToConf
                       }}
                       className="text-xs font-semibold text-emerald-700 hover:text-emerald-800 transition cursor-pointer hover:underline"
                     >
-                      Not the correct email? <span className="underline">Change email address</span>
+                      Wrong email address? <span className="underline">Change email</span>
                     </button>
                   ) : (
                     <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl space-y-2 text-left animate-in fade-in duration-200">
@@ -706,7 +706,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin, onGoToConf
                           type="email"
                           value={newEmailInput}
                           onChange={(e) => setNewEmailInput(e.target.value)}
-                          placeholder="enter email"
+                          placeholder="enter new email"
                           className="w-full px-3 py-1.5 rounded-xl bg-white border border-slate-300 text-xs text-slate-900 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500"
                         />
                         <button
@@ -738,33 +738,39 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin, onGoToConf
                   </div>
                 )}
 
-                {/* Supabase Primary Confirmation Action */}
-                <div className="space-y-3.5 pt-1">
+                {/* Primary Card Actions */}
+                <div className="space-y-3 pt-1">
                   <button
                     type="button"
-                    onClick={() => handleVerifyCodeSubmit()}
+                    onClick={() => handleResendVerification(unverifiedAccount.email)}
                     disabled={isLoading}
                     className="w-full py-3.5 px-6 bg-slate-950 hover:bg-slate-900 text-white font-bold text-sm rounded-2xl shadow-xl shadow-slate-950/20 transition duration-200 flex items-center justify-center gap-2 cursor-pointer active:scale-[0.99] disabled:opacity-50"
                   >
-                    <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                    <span>Confirm Sign Up with Supabase</span>
+                    <Mail className="w-4 h-4 text-emerald-400" />
+                    <span>{isLoading ? 'Resending email...' : 'Resend Confirmation Email'}</span>
                   </button>
 
-                  {/* Resend link */}
-                  <div>
+                  {/* Dev Sandbox Shortcut Notice */}
+                  <div className="p-3 rounded-2xl bg-amber-50/70 border border-amber-200/70 text-left space-y-1.5 text-2xs text-amber-900">
+                    <div className="font-bold flex items-center gap-1.5 text-amber-950">
+                      <span>ℹ️ Why isn't the email in my inbox?</span>
+                    </div>
+                    <p className="text-amber-800 leading-normal">
+                      Real outbound emails to external addresses (like Gmail) require configured SMTP credentials (<code className="font-mono text-amber-950">SMTP_HOST</code>) or active Supabase Auth mail triggers.
+                    </p>
                     <button
                       type="button"
-                      onClick={() => handleResendVerification(unverifiedAccount.email)}
-                      disabled={isLoading}
-                      className="text-xs text-slate-500 font-medium hover:text-slate-900 transition underline cursor-pointer disabled:opacity-50"
+                      onClick={() => handleVerifyCodeSubmit()}
+                      className="w-full mt-1.5 py-2 px-3 bg-amber-600 hover:bg-amber-700 text-white font-bold text-2xs rounded-xl transition cursor-pointer flex items-center justify-center gap-1.5 shadow-sm"
                     >
-                      {isLoading ? 'Resending email...' : 'Did not receive confirmation link? Resend email'}
+                      <ShieldCheck className="w-3.5 h-3.5" />
+                      <span>Sandbox Mode: Auto-Confirm & Activate Now</span>
                     </button>
                   </div>
                 </div>
 
                 {/* Footer Back link */}
-                <div className="pt-3 border-t border-slate-100">
+                <div className="pt-3 border-t border-slate-100 flex justify-between items-center text-xs">
                   <button
                     type="button"
                     onClick={() => {
@@ -773,9 +779,19 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin, onGoToConf
                       setVerificationFeedback(null);
                       setAuthMode('login');
                     }}
-                    className="text-xs text-slate-500 font-medium hover:text-slate-900 transition cursor-pointer"
+                    className="text-slate-500 font-medium hover:text-slate-900 transition cursor-pointer"
                   >
-                    Have an account? <span className="font-bold text-slate-800 underline">Log in</span>
+                    ← Back to Log In
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (onGoToConfirmEmail) onGoToConfirmEmail();
+                    }}
+                    className="text-slate-600 font-bold hover:text-slate-900 underline transition cursor-pointer flex items-center gap-1"
+                  >
+                    <span>Confirm Page</span>
+                    <ExternalLink className="w-3 h-3 text-slate-400" />
                   </button>
                 </div>
 
