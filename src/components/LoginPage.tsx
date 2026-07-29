@@ -14,6 +14,7 @@ import {
   Sparkles,
   Lock,
   CheckCircle2,
+  KeyRound,
   ExternalLink
 } from 'lucide-react';
 
@@ -680,7 +681,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin, onGoToConf
 
                 {/* Clear Guidance */}
                 <p className="text-xs sm:text-sm text-slate-600 leading-relaxed font-normal max-w-sm mx-auto">
-                  We have dispatched a Supabase sign up confirmation link to your email. Please open your email inbox and click the link to confirm your account.
+                  A Supabase confirmation link has been sent to your email address. Click below to confirm sign up with Supabase or check your inbox.
                 </p>
 
                 {/* Change Email Option */}
@@ -740,6 +741,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin, onGoToConf
 
                 {/* Primary Card Actions */}
                 <div className="space-y-3 pt-1">
+                  {/* Resend Confirmation Email Button */}
                   <button
                     type="button"
                     onClick={() => handleResendVerification(unverifiedAccount.email)}
@@ -749,24 +751,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin, onGoToConf
                     <Mail className="w-4 h-4 text-emerald-400" />
                     <span>{isLoading ? 'Resending email...' : 'Resend Confirmation Email'}</span>
                   </button>
-
-                  {/* Dev Sandbox Shortcut Notice */}
-                  <div className="p-3 rounded-2xl bg-amber-50/70 border border-amber-200/70 text-left space-y-1.5 text-2xs text-amber-900">
-                    <div className="font-bold flex items-center gap-1.5 text-amber-950">
-                      <span>ℹ️ Why isn't the email in my inbox?</span>
-                    </div>
-                    <p className="text-amber-800 leading-normal">
-                      Real outbound emails to external addresses (like Gmail) require configured SMTP credentials (<code className="font-mono text-amber-950">SMTP_HOST</code>) or active Supabase Auth mail triggers.
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => handleVerifyCodeSubmit()}
-                      className="w-full mt-1.5 py-2 px-3 bg-amber-600 hover:bg-amber-700 text-white font-bold text-2xs rounded-xl transition cursor-pointer flex items-center justify-center gap-1.5 shadow-sm"
-                    >
-                      <ShieldCheck className="w-3.5 h-3.5" />
-                      <span>Sandbox Mode: Auto-Confirm & Activate Now</span>
-                    </button>
-                  </div>
                 </div>
 
                 {/* Footer Back link */}

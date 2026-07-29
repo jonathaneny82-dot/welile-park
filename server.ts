@@ -909,13 +909,16 @@ async function syncSupabaseDatabase() {
 
 // --- REST API Endpoints ---
 
-// Helper to send email with nodemailer (or simulate dispatch with logs)
+// Helper to send email with nodemailer, Resend API, SendGrid API, or simulate dispatch with logs
 async function sendVerificationEmail(toEmail: string, userName: string, code: string, token: string) {
   const host = process.env.SMTP_HOST;
   const port = parseInt(process.env.SMTP_PORT || '587', 10);
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
-  const from = process.env.SMTP_FROM || '"WELILE CAR HUB Security" <no-reply@welilecarhub.com>';
+  const user = process.env.SMTP_USER || process.env.EMAIL_USER || process.env.GMAIL_USER;
+  const pass = process.env.SMTP_PASS || process.env.EMAIL_PASS || process.env.GMAIL_APP_PASSWORD;
+  const from = process.env.SMTP_FROM || (user ? `"WELILE CAR HUB Security" <${user}>` : '"WELILE CAR HUB Security" <no-reply@welilecarhub.com>');
+
+  const appUrl = process.env.APP_URL || 'http://localhost:3000';
+  const confirmUrl = `${appUrl}/confirm-email?email=${encodeURIComponent(toEmail)}&code=${code}`;
 
   const htmlContent = `
     <div style="font-family: Arial, sans-serif; max-width: 550px; margin: 0 auto; padding: 25px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff;">
@@ -923,7 +926,7 @@ async function sendVerificationEmail(toEmail: string, userName: string, code: st
       <p style="color: #334155; font-size: 15px;">Hello <strong>${userName || 'Valued User'}</strong>,</p>
       <p style="color: #334155; font-size: 15px;">Thank you for signing up for WELILE CAR HUB. Please click the button below to confirm your email and activate your account:</p>
       <div style="padding: 20px 0; text-align: center;">
-        <a href="${process.env.APP_URL || 'http://localhost:3000'}/confirm-email?email=${encodeURIComponent(toEmail)}&code=${code}" style="background-color: #0f172a; color: #ffffff; padding: 14px 28px; text-decoration: none; border-radius: 10px; font-weight: bold; font-size: 15px; display: inline-block;">Confirm Sign Up with Supabase</a>
+        <a href="${confirmUrl}" style="background-color: #0f172a; color: #ffffff; padding: 14px 28px; text-decoration: none; border-radius: 10px; font-weight: bold; font-size: 15px; display: inline-block;">Confirm Email Address</a>
       </div>
       <p style="color: #64748b; font-size: 13px; text-align: center;">Or enter verification code in app: <strong style="color: #0f172a; font-family: monospace;">${code}</strong></p>
       <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 20px 0;" />
@@ -931,6 +934,105 @@ async function sendVerificationEmail(toEmail: string, userName: string, code: st
     </div>
   `;
 
+  // 1. Primary Supabase Auth dispatch if Supabase client is initialized
+  if (supabase) {
+    try {
+      const { error: sbResendErr } = await supabase.auth.resend({
+        type: 'signup',
+        email: toEmail,
+        options: { emailRedirectTo: confirmUrl },
+      });
+      if (!sbResendErr) {
+        console.log(`✉️ Supabase Auth confirmation email successfully requested for ${toEmail}`);
+        return { success: true, method: 'supabase' };
+      } else {
+        console.warn(`Supabase Auth resend notice for ${toEmail}:`, sbResendErr.message);
+      }
+    } catch (sbErr) {
+      console.warn(`Exception on Supabase Auth resend for ${toEmail}:`, sbErr);
+    }
+  }
+
+  // 2. Resend API HTTP dispatch if RESEND_API_KEY is defined
+  const resendApiKey = process.env.RESEND_API_KEY;
+  if (resendApiKey) {
+    try {
+      const resendResp = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${resendApiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          from: process.env.RESEND_FROM || 'WELILE CAR HUB <onboarding@resend.dev>',
+          to: [toEmail],
+          subject: 'Confirm Sign Up - WELILE CAR HUB',
+          html: htmlContent,
+        }),
+      });
+      const resendData = await resendResp.json();
+      if (resendResp.ok) {
+        console.log(`✉️ Resend API Email sent successfully to ${toEmail} (ID: ${resendData.id})`);
+        return { success: true, method: 'resend', id: resendData.id };
+      } else {
+        console.error(`❌ Resend API error for ${toEmail}:`, resendData);
+      }
+    } catch (err) {
+      console.error(`❌ Exception sending email via Resend API to ${toEmail}:`, err);
+    }
+  }
+
+  // 3. SendGrid API HTTP dispatch if SENDGRID_API_KEY is defined
+  const sendgridApiKey = process.env.SENDGRID_API_KEY;
+  if (sendgridApiKey) {
+    try {
+      const sgResp = await fetch('https://api.sendgrid.com/v3/mail/send', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${sendgridApiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          personalizations: [{ to: [{ email: toEmail }] }],
+          from: { email: process.env.SENDGRID_FROM || 'no-reply@welilecarhub.com', name: 'WELILE CAR HUB' },
+          subject: 'Confirm Sign Up - WELILE CAR HUB',
+          content: [{ type: 'text/html', value: htmlContent }],
+        }),
+      });
+      if (sgResp.ok) {
+        console.log(`✉️ SendGrid API Email sent successfully to ${toEmail}`);
+        return { success: true, method: 'sendgrid' };
+      } else {
+        const sgErr = await sgResp.text();
+        console.error(`❌ SendGrid API error for ${toEmail}:`, sgErr);
+      }
+    } catch (err) {
+      console.error(`❌ Exception sending email via SendGrid to ${toEmail}:`, err);
+    }
+  }
+
+  // 4. Gmail service shortcut if credentials are provided without custom SMTP host
+  if (!host && user && pass) {
+    try {
+      const transporter = nodemailer.createTransport({
+        service: 'gmail',
+        auth: { user, pass },
+      });
+      await transporter.sendMail({
+        from: `WELILE CAR HUB <${user}>`,
+        to: toEmail,
+        subject: `Confirm Sign Up - WELILE CAR HUB`,
+        text: `Hello ${userName}, Please confirm your sign up for WELILE CAR HUB by opening your verification link: ${confirmUrl} or entering code: ${code}`,
+        html: htmlContent,
+      });
+      console.log(`✉️ Gmail Verification Email sent successfully to ${toEmail}`);
+      return { success: true, method: 'gmail' };
+    } catch (err) {
+      console.error(`❌ Error sending email via Gmail to ${toEmail}:`, err);
+    }
+  }
+
+  // 5. Custom SMTP
   if (host && user && pass) {
     try {
       const transporter = nodemailer.createTransport({
@@ -943,7 +1045,7 @@ async function sendVerificationEmail(toEmail: string, userName: string, code: st
         from,
         to: toEmail,
         subject: `Confirm Sign Up - WELILE CAR HUB`,
-        text: `Hello ${userName}, Please confirm your sign up for WELILE CAR HUB by opening your verification link or entering code: ${code}`,
+        text: `Hello ${userName}, Please confirm your sign up for WELILE CAR HUB by opening your verification link: ${confirmUrl} or entering code: ${code}`,
         html: htmlContent,
       });
       console.log(`✉️ Real SMTP Verification Email sent successfully to ${toEmail}`);
@@ -953,7 +1055,7 @@ async function sendVerificationEmail(toEmail: string, userName: string, code: st
     }
   }
 
-  // Fallback / Log notification if SMTP credentials are not set
+  // Fallback log notification if external email credentials are not set
   console.log(`=======================================================`);
   console.log(`✉️ [VERIFICATION EMAIL DISPATCH LOG]`);
   console.log(`To: ${toEmail}`);
@@ -961,8 +1063,10 @@ async function sendVerificationEmail(toEmail: string, userName: string, code: st
   console.log(`Subject: Confirm Sign Up - WELILE CAR HUB`);
   console.log(`Verification Code: ${code}`);
   console.log(`Verification Token: ${token}`);
+  console.log(`Link: ${confirmUrl}`);
+  console.log(`Notice: To deliver emails to external inboxes like Gmail, set SMTP_HOST/SMTP_PASS, GMAIL_APP_PASSWORD, RESEND_API_KEY, or SUPABASE_URL in .env`);
   console.log(`=======================================================`);
-  return { success: true, method: 'logged' };
+  return { success: true, method: 'logged', link: confirmUrl };
 }
 
 // Health & System Details

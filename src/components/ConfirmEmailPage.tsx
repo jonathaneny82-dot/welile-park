@@ -26,7 +26,7 @@ export const ConfirmEmailPage: React.FC<ConfirmEmailPageProps> = ({
   const [resendFeedback, setResendFeedback] = useState<string | null>(null);
   const [isChangingEmail, setIsChangingEmail] = useState<boolean>(!initialEmail);
 
-  // Extract confirmation parameters from URL hash or search query
+  // Extract confirmation parameters from URL hash or search query and listen for Supabase auth events
   useEffect(() => {
     const searchParams = new URLSearchParams(window.location.search);
     const hashParams = new URLSearchParams(window.location.hash.replace('#', '?'));
@@ -42,6 +42,29 @@ export const ConfirmEmailPage: React.FC<ConfirmEmailPageProps> = ({
     }
     if (urlCode) setCode(urlCode);
     if (urlTokenHash) setToken(urlTokenHash);
+
+    // Listen to Supabase auth session if configured
+    if (isSupabaseConfigured) {
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        if (session?.user?.email) {
+          console.log('✅ Supabase Auth session active for:', session.user.email);
+          setEmail(session.user.email);
+          handleVerify(session.user.email);
+        }
+      });
+
+      const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+        console.log('Supabase Auth Event:', event);
+        if ((event === 'SIGNED_IN' || event === 'USER_UPDATED' || event === 'INITIAL_SESSION') && session?.user?.email) {
+          setEmail(session.user.email);
+          handleVerify(session.user.email);
+        }
+      });
+
+      return () => {
+        authListener.subscription.unsubscribe();
+      };
+    }
 
     // If we have token, code, or URL params indicating signup confirmation, auto-trigger verification
     if (urlTokenHash || urlCode || (type === 'signup' && urlEmail)) {
@@ -313,26 +336,16 @@ export const ConfirmEmailPage: React.FC<ConfirmEmailPageProps> = ({
             </button>
           ) : (
             <div className="space-y-3.5">
-              {/* Primary Supabase Confirm Button */}
-              <button
-                type="button"
-                onClick={() => handleVerify()}
-                disabled={status === 'verifying'}
-                className="w-full py-3.5 px-6 bg-slate-950 hover:bg-slate-900 text-white font-bold text-sm rounded-2xl shadow-xl shadow-slate-950/25 transition duration-200 flex items-center justify-center gap-2 cursor-pointer active:scale-[0.99] disabled:opacity-50"
-              >
-                <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                <span>Confirm Sign Up with Supabase</span>
-              </button>
-
-              {/* Resend link */}
-              <div className="pt-1">
+              {/* Resend button */}
+              <div>
                 <button
                   type="button"
                   onClick={handleResend}
                   disabled={isResending}
-                  className="text-xs text-slate-500 font-medium hover:text-slate-900 transition underline cursor-pointer disabled:opacity-50"
+                  className="w-full py-3.5 px-6 bg-slate-950 hover:bg-slate-900 text-white font-bold text-sm rounded-2xl shadow-xl shadow-slate-950/20 transition duration-200 flex items-center justify-center gap-2 cursor-pointer active:scale-[0.99] disabled:opacity-50"
                 >
-                  {isResending ? 'Resending email...' : 'Did not receive confirmation link? Resend email'}
+                  <Mail className="w-4 h-4 text-emerald-400" />
+                  <span>{isResending ? 'Resending email...' : 'Resend Confirmation Email'}</span>
                 </button>
               </div>
             </div>
