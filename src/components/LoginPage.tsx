@@ -344,7 +344,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin, onGoToConf
     }
 
     if (verifiedUser) {
-      setVerificationFeedback('✅ 6-Digit verification code verified! Signing into account...');
+      setVerificationFeedback('✅ Email sign up confirmed with Supabase! Signing into account...');
       setUnverifiedAccount(null);
       setAuthNotice(null);
       setVerificationCodeInput('');
@@ -656,7 +656,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin, onGoToConf
               </div>
             )}
 
-            {/* MANDATORY EMAIL VERIFICATION PROMPT CARD */}
+            {/* MANDATORY EMAIL VERIFICATION PROMPT CARD - SUPABASE SIGN UP CONFIRMATION */}
             {unverifiedAccount && (
               <div className="p-7 sm:p-9 bg-white border border-slate-100 rounded-[32px] space-y-6 text-center animate-in fade-in zoom-in-95 duration-200 shadow-2xl text-slate-900 relative overflow-hidden">
                 
@@ -665,22 +665,23 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin, onGoToConf
                   <div className="w-16 h-16 bg-slate-950 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-slate-950/15">
                     <Mail className="w-8 h-8 text-white stroke-[1.75]" />
                   </div>
-                  <div className="absolute -top-1.5 -right-1.5 text-amber-400 animate-pulse">
-                    <Sparkles className="w-6 h-6 fill-amber-300 text-amber-500 stroke-[1.5]" />
-                  </div>
-                  <div className="absolute top-0 -right-3 text-amber-300">
-                    <Sparkles className="w-3.5 h-3.5 fill-amber-200 text-amber-400 stroke-[1.5]" />
+                  <div className="absolute -top-1.5 -right-1.5 text-emerald-400 animate-pulse">
+                    <Sparkles className="w-6 h-6 fill-emerald-300 text-emerald-500 stroke-[1.5]" />
                   </div>
                 </div>
 
-                {/* Title & Description */}
+                {/* Title & Email Chip */}
                 <div className="space-y-2">
                   <h3 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">Verify your email</h3>
-                  <p className="text-xs sm:text-sm text-slate-600 leading-relaxed font-normal max-w-sm mx-auto">
-                    To keep a trusted and safe community, we&apos;ve sent an email to{' '}
-                    <strong className="font-bold text-slate-900 break-all">{unverifiedAccount.email}</strong> for verification, and you&apos;ll only do this once.
-                  </p>
+                  <div className="inline-block px-3.5 py-1.5 rounded-full bg-slate-100 text-slate-800 text-xs font-bold font-mono border border-slate-200">
+                    {unverifiedAccount.email}
+                  </div>
                 </div>
+
+                {/* Supabase Confirmation Guidance */}
+                <p className="text-xs sm:text-sm text-slate-600 leading-relaxed font-normal max-w-sm mx-auto">
+                  A Supabase confirmation link has been sent to your email address. Click the link in your inbox or tap below to confirm sign up.
+                </p>
 
                 {/* Change Email Link / Form */}
                 <div>
@@ -737,38 +738,27 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin, onGoToConf
                   </div>
                 )}
 
-                {/* Primary Button & Secondary Actions */}
-                <div className="space-y-3.5">
+                {/* Supabase Primary Confirmation Action */}
+                <div className="space-y-3.5 pt-1">
                   <button
                     type="button"
-                    onClick={() => {
-                      handleResendVerification(unverifiedAccount.email);
-                      const domain = unverifiedAccount.email.split('@')[1] || '';
-                      if (domain.includes('gmail.com')) {
-                        window.open('https://mail.google.com', '_blank');
-                      } else if (domain.includes('outlook') || domain.includes('hotmail') || domain.includes('live')) {
-                        window.open('https://outlook.live.com', '_blank');
-                      } else if (domain.includes('yahoo')) {
-                        window.open('https://mail.yahoo.com', '_blank');
-                      } else {
-                        window.location.href = `mailto:${unverifiedAccount.email}`;
-                      }
-                    }}
-                    className="w-full py-3.5 px-6 bg-slate-950 hover:bg-slate-900 text-white font-bold text-sm rounded-2xl shadow-xl shadow-slate-950/25 transition duration-200 flex items-center justify-center gap-2 cursor-pointer active:scale-[0.99]"
+                    onClick={() => handleVerifyCodeSubmit()}
+                    disabled={isLoading}
+                    className="w-full py-3.5 px-6 bg-slate-950 hover:bg-slate-900 text-white font-bold text-sm rounded-2xl shadow-xl shadow-slate-950/20 transition duration-200 flex items-center justify-center gap-2 cursor-pointer active:scale-[0.99] disabled:opacity-50"
                   >
-                    <span>Open my mail now</span>
-                    <ExternalLink className="w-4 h-4 text-slate-300" />
+                    <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                    <span>Confirm Sign Up with Supabase</span>
                   </button>
 
                   {/* Resend link */}
-                  <div className="pt-1">
+                  <div>
                     <button
                       type="button"
                       onClick={() => handleResendVerification(unverifiedAccount.email)}
                       disabled={isLoading}
                       className="text-xs text-slate-500 font-medium hover:text-slate-900 transition underline cursor-pointer disabled:opacity-50"
                     >
-                      {isLoading ? 'Resending email...' : 'Did not receive? Resend email'}
+                      {isLoading ? 'Resending email...' : 'Did not receive confirmation link? Resend email'}
                     </button>
                   </div>
                 </div>

@@ -225,19 +225,19 @@ export const ConfirmEmailPage: React.FC<ConfirmEmailPageProps> = ({
           </div>
 
           {/* Heading */}
-          <div className="space-y-2">
+          <div className="space-y-1">
             <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
               {status === 'success' ? 'Email Verified!' : 'Verify your email'}
             </h1>
-            <p className="text-xs sm:text-sm text-slate-600 leading-relaxed max-w-sm mx-auto font-normal">
-              {status === 'success'
-                ? 'Your email address has been successfully confirmed. You now have full access to UG-PARK.'
-                : 'To keep a trusted and safe community, we\'ve sent an email to '}
-              {status !== 'success' && (
-                <strong className="font-bold text-slate-900 break-all">{email || 'your email address'}</strong>
-              )}
-              {status !== 'success' && ' for verification, and you\'ll only do this once.'}
-            </p>
+            {status === 'success' ? (
+              <p className="text-xs sm:text-sm text-slate-600 leading-relaxed max-w-sm mx-auto font-normal">
+                Your email address has been successfully confirmed. You now have full access to UG-PARK.
+              </p>
+            ) : (
+              <div className="inline-block px-3 py-1 rounded-full bg-slate-100 text-slate-700 text-xs font-semibold font-mono">
+                {email || 'your email address'}
+              </div>
+            )}
           </div>
 
           {/* Email Change form / Toggle */}
@@ -298,7 +298,7 @@ export const ConfirmEmailPage: React.FC<ConfirmEmailPageProps> = ({
             </div>
           )}
 
-          {/* Primary & Code Options */}
+          {/* Primary & Link Options */}
           {status === 'success' ? (
             <button
               type="button"
@@ -313,49 +313,16 @@ export const ConfirmEmailPage: React.FC<ConfirmEmailPageProps> = ({
             </button>
           ) : (
             <div className="space-y-3.5">
-              {/* Primary Dark Button */}
+              {/* Primary Supabase Confirm Button */}
               <button
                 type="button"
-                onClick={openMailApp}
-                className="w-full py-3.5 px-6 bg-slate-950 hover:bg-slate-900 text-white font-bold text-sm rounded-2xl shadow-xl shadow-slate-950/25 transition duration-200 flex items-center justify-center gap-2 cursor-pointer active:scale-[0.99]"
+                onClick={() => handleVerify()}
+                disabled={status === 'verifying'}
+                className="w-full py-3.5 px-6 bg-slate-950 hover:bg-slate-900 text-white font-bold text-sm rounded-2xl shadow-xl shadow-slate-950/25 transition duration-200 flex items-center justify-center gap-2 cursor-pointer active:scale-[0.99] disabled:opacity-50"
               >
-                <span>Open my mail now</span>
-                <ExternalLink className="w-4 h-4 text-slate-300" />
+                <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                <span>Confirm Sign Up with Supabase</span>
               </button>
-
-              {/* 6-Digit Code Direct Entry */}
-              <div className="pt-2 border-t border-slate-100">
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    handleVerify();
-                  }}
-                  className="space-y-2 text-left"
-                >
-                  <label className="block text-2xs font-bold text-slate-500 uppercase tracking-wider text-center">
-                    Or Enter 6-Digit Security Code:
-                  </label>
-                  <div className="flex gap-2">
-                    <div className="relative flex-1">
-                      <KeyRound className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                      <input
-                        type="text"
-                        maxLength={6}
-                        value={code}
-                        onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
-                        placeholder="e.g. 582910"
-                        className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-mono text-center text-sm font-bold tracking-widest focus:outline-none focus:ring-2 focus:ring-slate-900"
-                      />
-                    </div>
-                    <button
-                      type="submit"
-                      className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-sm transition cursor-pointer shrink-0"
-                    >
-                      Verify
-                    </button>
-                  </div>
-                </form>
-              </div>
 
               {/* Resend link */}
               <div className="pt-1">
@@ -365,7 +332,7 @@ export const ConfirmEmailPage: React.FC<ConfirmEmailPageProps> = ({
                   disabled={isResending}
                   className="text-xs text-slate-500 font-medium hover:text-slate-900 transition underline cursor-pointer disabled:opacity-50"
                 >
-                  {isResending ? 'Resending email...' : 'Did not receive? Resend email'}
+                  {isResending ? 'Resending email...' : 'Did not receive confirmation link? Resend email'}
                 </button>
               </div>
             </div>
