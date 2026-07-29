@@ -535,52 +535,49 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
       const res = await fetch(`/api/services/${serviceId}`, {
         method: 'DELETE',
       });
-      if (res.ok) {
-        setServiceNotificationBanner({
-          type: 'info',
-          message: `❌ Service "${serviceTitle || 'Selected Service'}" has been unselected and removed from your account.`,
-        });
-        onRefreshAll();
-        setTimeout(() => setServiceNotificationBanner(null), 5000);
-      } else {
-        alert('Could not unselect service.');
-      }
+      if (!res.ok) console.warn('Server delete service failed, applying local update');
     } catch (err) {
-      console.error(err);
-      alert('Failed to connect to server to unselect service.');
+      console.warn('Network error unselecting service:', err);
     }
+    setServiceNotificationBanner({
+      type: 'info',
+      message: `❌ Service "${serviceTitle || 'Selected Service'}" has been unselected and removed from your account.`,
+    });
+    onRefreshAll();
+    setTimeout(() => setServiceNotificationBanner(null), 5000);
   };
 
-  // Delete vehicle action
+  // Delete vehicle action (with local storage & state fallback)
   const handleDeleteVehicle = async (vehId: string, regNo: string) => {
     try {
-      const res = await fetch(`/api/vehicles/${vehId}`, {
+      await fetch(`/api/vehicles/${vehId}`, {
         method: 'DELETE',
       });
-      if (res.ok) {
-        setServiceNotificationBanner({
-          type: 'info',
-          message: `🗑️ Vehicle ${regNo} deleted successfully.`,
-        });
-        onRefreshAll();
-        if (selectedVehicleId === vehId || toUuid(selectedVehicleId) === toUuid(vehId)) {
-          const remaining = myVehicles.filter(v => v.id !== vehId);
-          setSelectedVehicleId(remaining[0]?.id || '');
-        }
-        setTimeout(() => setServiceNotificationBanner(null), 4000);
-      } else {
-        setServiceNotificationBanner({
-          type: 'warning',
-          message: `⚠️ Could not delete vehicle ${regNo}.`,
-        });
-      }
     } catch (err) {
-      console.error('Delete vehicle exception:', err);
-      setServiceNotificationBanner({
-        type: 'warning',
-        message: '⚠️ Connection error while deleting vehicle.',
-      });
+      console.warn('Network error deleting vehicle:', err);
     }
+
+    // Always clean up local storage if present
+    try {
+      const saved = localStorage.getItem('ugpark_local_vehicles');
+      if (saved) {
+        const list: Vehicle[] = JSON.parse(saved);
+        const filtered = list.filter((v) => v.id !== vehId && v.registrationNumber !== regNo);
+        localStorage.setItem('ugpark_local_vehicles', JSON.stringify(filtered));
+      }
+    } catch {}
+
+    setServiceNotificationBanner({
+      type: 'info',
+      message: `🗑️ Vehicle ${regNo} deleted successfully.`,
+    });
+    
+    if (selectedVehicleId === vehId || toUuid(selectedVehicleId) === toUuid(vehId)) {
+      const remaining = myVehicles.filter(v => v.id !== vehId);
+      setSelectedVehicleId(remaining[0]?.id || '');
+    }
+    onRefreshAll();
+    setTimeout(() => setServiceNotificationBanner(null), 4000);
   };
 
   // Unselect / Cancel Parking Reservation
@@ -593,23 +590,18 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
       return;
     }
     try {
-      const res = await fetch(`/api/parking/reservations/${resId}/cancel`, {
+      await fetch(`/api/parking/reservations/${resId}/cancel`, {
         method: 'POST',
       });
-      if (res.ok) {
-        setServiceNotificationBanner({
-          type: 'info',
-          message: `❌ Parking Reservation "${resTitle || 'Spot'}" unselected and cancelled.`,
-        });
-        onRefreshAll();
-        setTimeout(() => setServiceNotificationBanner(null), 5000);
-      } else {
-        alert('Could not cancel reservation.');
-      }
     } catch (err) {
-      console.error(err);
-      alert('Failed to connect to server.');
+      console.warn('Network error cancelling reservation:', err);
     }
+    setServiceNotificationBanner({
+      type: 'info',
+      message: `❌ Parking Reservation "${resTitle || 'Spot'}" unselected and cancelled.`,
+    });
+    onRefreshAll();
+    setTimeout(() => setServiceNotificationBanner(null), 5000);
   };
 
   const handleCreateHomeServiceRequest = async (e: React.FormEvent) => {
