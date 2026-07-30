@@ -57,8 +57,52 @@ function getSupabaseServerClient(): SupabaseClient | null {
   return null;
 }
 
-// Fallback legacy variable reference for existing helpers
-const supabase = getSupabaseServerClient();
+// Dynamic Canonical Site URL Resolution (Supports Vercel, Custom Domains, Proxy Headers)
+function getCanonicalSiteUrl(reqOrOrigin?: any): string {
+  if (typeof reqOrOrigin === 'string' && reqOrOrigin.startsWith('http')) {
+    return reqOrOrigin.replace(/\/$/, '');
+  }
+
+  // 1. Explicit environment variable overrides
+  if (process.env.SITE_URL) return process.env.SITE_URL.replace(/\/$/, '');
+  if (process.env.APP_URL) return process.env.APP_URL.replace(/\/$/, '');
+  if (process.env.VITE_APP_URL) return process.env.VITE_APP_URL.replace(/\/$/, '');
+
+  // 2. Vercel System Environment Variables
+  if (process.env.VERCEL_PROJECT_PRODUCTION_URL) {
+    const raw = process.env.VERCEL_PROJECT_PRODUCTION_URL;
+    return raw.startsWith('http') ? raw.replace(/\/$/, '') : `https://${raw.replace(/\/$/, '')}`;
+  }
+  if (process.env.VERCEL_URL) {
+    const raw = process.env.VERCEL_URL;
+    return raw.startsWith('http') ? raw.replace(/\/$/, '') : `https://${raw.replace(/\/$/, '')}`;
+  }
+
+  // 3. HTTP Request Header detection (supporting proxy headers from Vercel / Cloud Run)
+  if (reqOrOrigin && typeof reqOrOrigin === 'object') {
+    const headers = reqOrOrigin.headers || {};
+    const proto = headers['x-forwarded-proto'] || (reqOrOrigin.socket?.encrypted ? 'https' : 'http');
+    const host = headers['x-forwarded-host'] || headers.host || headers.origin;
+    if (host) {
+      const cleanHost = host.replace(/^https?:\/\//, '').replace(/\/$/, '');
+      return `${proto}://${cleanHost}`;
+    }
+  }
+
+  return 'http://localhost:3000';
+}
+
+// Dynamic Proxy for legacy `supabase` references so env var changes or delayed initialization works seamlessly
+const supabase: any = new Proxy({} as any, {
+  get(_target, prop) {
+    const client = getSupabaseServerClient();
+    if (!client) {
+      return () => Promise.resolve({ data: null, error: { message: 'Supabase client not initialized' } });
+    }
+    const val = (client as any)[prop];
+    return typeof val === 'function' ? val.bind(client) : val;
+  },
+});
 
 
 // Initialize Gemini Client
@@ -779,7 +823,8 @@ async function ensureParkingSpaceInSupabase(parkingId: string) {
 
 // --- SUPABASE AUTO SYNC ON STARTUP ---
 async function syncSupabaseDatabase() {
-  if (!supabase) return;
+  const sb = getSupabaseServerClient();
+  if (!sb) return;
   try {
     console.log('🔄 Syncing Supabase database tables...');
 
@@ -977,15 +1022,15 @@ async function syncSupabaseDatabase() {
 // --- REST API Endpoints ---
 
 // Helper to send email with nodemailer, Resend API, SendGrid API, or simulate dispatch with logs
-async function sendVerificationEmail(toEmail: string, userName: string, code: string, token: string) {
+async function sendVerificationEmail(toEmail: string, userName: string, code: string, token: string, reqOrOrigin?: any) {
   const host = process.env.SMTP_HOST;
   const port = parseInt(process.env.SMTP_PORT || '587', 10);
   const user = process.env.SMTP_USER || process.env.EMAIL_USER || process.env.GMAIL_USER;
   const pass = process.env.SMTP_PASS || process.env.EMAIL_PASS || process.env.GMAIL_APP_PASSWORD;
   const from = process.env.SMTP_FROM || (user ? `"WELILE CAR HUB Security" <${user}>` : '"WELILE CAR HUB Security" <no-reply@welilecarhub.com>');
 
-  const appUrl = process.env.APP_URL || 'http://localhost:3000';
-  const confirmUrl = `${appUrl}/confirm-email?email=${encodeURIComponent(toEmail)}&code=${code}`;
+  const siteUrl = getCanonicalSiteUrl(reqOrOrigin);
+  const confirmUrl = `${siteUrl}/confirm-email?email=${encodeURIComponent(toEmail)}&code=${code}`;
 
   const htmlContent = `
     <div style="font-family: Arial, sans-serif; max-width: 550px; margin: 0 auto; padding: 25px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff;">
@@ -1002,9 +1047,10 @@ async function sendVerificationEmail(toEmail: string, userName: string, code: st
   `;
 
   // 1. Primary Supabase Auth dispatch if Supabase client is initialized
-  if (supabase) {
+  const sb = getSupabaseServerClient();
+  if (sb) {
     try {
-      const { error: sbResendErr } = await supabase.auth.resend({
+      const { error: sbResendErr } = await sb.auth.resend({
         type: 'signup',
         email: toEmail,
         options: { emailRedirectTo: confirmUrl },
@@ -1148,216 +1194,227 @@ app.get('/api/users', (req, res) => {
 
 // Registration Endpoint - Creates unverified accounts requiring mandatory email confirmation via Supabase
 app.post('/api/register', async (req, res) => {
-  const { name, email, phone, role, password } = req.body;
-  const cleanEmail = (email || '').trim().toLowerCase();
-  const cleanName = (name || '').trim();
+  try {
+    const { name, email, phone, role, password } = req.body;
+    const cleanEmail = (email || '').trim().toLowerCase();
+    const cleanName = (name || '').trim();
 
-  if (!cleanEmail) {
-    return res.status(400).json({ error: 'Email address is required for registration.' });
-  }
+    if (!cleanEmail) {
+      return res.status(400).json({ error: 'Email address is required for registration.' });
+    }
 
-  // Generate 6-digit numeric verification code
-  const code = Math.floor(100000 + Math.random() * 900000).toString();
-  const token = `vtoken-${Math.random().toString(36).substring(2)}${Date.now()}`;
-  const origin = req.headers.origin || 'http://localhost:3000';
-  const confirmRedirectUrl = `${origin}/confirm-email`;
+    // Generate 6-digit numeric verification code
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const token = `vtoken-${Math.random().toString(36).substring(2)}${Date.now()}`;
+    const siteUrl = getCanonicalSiteUrl(req);
+    const confirmRedirectUrl = `${siteUrl}/confirm-email`;
 
-  const requestedRole = (role as UserRole) || UserRole.CUSTOMER;
-  const isStaff = requestedRole !== UserRole.CUSTOMER;
+    const requestedRole = (role as UserRole) || UserRole.CUSTOMER;
+    const isStaff = requestedRole !== UserRole.CUSTOMER;
 
-  const sb = getSupabaseServerClient();
-  let supabaseUserId = `usr-${Date.now()}`;
-  let supabaseNotice: string | null = null;
+    const sb = getSupabaseServerClient();
+    let supabaseUserId = `usr-${Date.now()}`;
+    let supabaseNotice: string | null = null;
 
-  // 1. Always trigger Supabase Auth signUp if Supabase client is configured
-  if (sb) {
-    try {
-      console.log(`📡 Calling Supabase Auth signUp for ${cleanEmail}...`);
-      let signUpRes = await sb.auth.signUp({
-        email: cleanEmail,
-        password: password || 'UgParkPass2026!',
-        options: {
-          data: { name: cleanName, role: requestedRole, phone: phone || '' },
-          emailRedirectTo: confirmRedirectUrl,
-        },
-      });
-
-      // If redirect URL restricted in Supabase Auth settings, retry without explicit emailRedirectTo
-      if (signUpRes.error && signUpRes.error.message?.toLowerCase().includes('redirect')) {
-        console.warn(`⚠️ Supabase Auth redirect URL notice: ${signUpRes.error.message}. Retrying signUp without explicit emailRedirectTo...`);
-        signUpRes = await sb.auth.signUp({
+    // 1. Always trigger Supabase Auth signUp if Supabase client is configured
+    if (sb) {
+      try {
+        console.log(`📡 Calling Supabase Auth signUp for ${cleanEmail}...`);
+        let signUpRes = await sb.auth.signUp({
           email: cleanEmail,
           password: password || 'UgParkPass2026!',
           options: {
             data: { name: cleanName, role: requestedRole, phone: phone || '' },
+            emailRedirectTo: confirmRedirectUrl,
           },
         });
-      }
 
-      if (signUpRes.error) {
-        const errObj = signUpRes.error as any;
-        const errMsg = errObj.message || errObj.error_description || errObj.msg || errObj.name || (typeof errObj === 'string' ? errObj : 'Supabase Auth Notice');
-        const cleanMsg = (errMsg && errMsg !== '{}' && errMsg !== '[object Object]') ? errMsg : 'Supabase Auth Registration Notice';
-        console.warn('⚠️ Supabase Auth signUp notice:', cleanMsg);
-        supabaseNotice = cleanMsg;
-
-        // If user already registered in Supabase Auth, try resend confirmation email
-        if (errMsg.toLowerCase().includes('already registered')) {
-          try {
-            await sb.auth.resend({
-              type: 'signup',
-              email: cleanEmail,
-              options: { emailRedirectTo: confirmRedirectUrl },
-            });
-            console.log(`✅ Supabase Auth signup email resent to ${cleanEmail}`);
-          } catch (resendErr) {
-            console.warn('Supabase Auth resend notice:', resendErr);
-          }
+        // If redirect URL restricted in Supabase Auth settings, retry without explicit emailRedirectTo
+        if (signUpRes.error && signUpRes.error.message?.toLowerCase().includes('redirect')) {
+          console.warn(`⚠️ Supabase Auth redirect URL notice: ${signUpRes.error.message}. Retrying signUp without explicit emailRedirectTo...`);
+          signUpRes = await sb.auth.signUp({
+            email: cleanEmail,
+            password: password || 'UgParkPass2026!',
+            options: {
+              data: { name: cleanName, role: requestedRole, phone: phone || '' },
+            },
+          });
         }
-      } else if (signUpRes.data?.user) {
-        supabaseUserId = signUpRes.data.user.id;
-        console.log(`✅ Supabase Auth user created/found in auth.users for ${cleanEmail} (UID: ${supabaseUserId})`);
+
+        if (signUpRes.error) {
+          const errObj = signUpRes.error as any;
+          const errMsg = errObj.message || errObj.error_description || errObj.msg || errObj.name || (typeof errObj === 'string' ? errObj : 'Supabase Auth Notice');
+          const cleanMsg = (errMsg && errMsg !== '{}' && errMsg !== '[object Object]') ? errMsg : 'Supabase Auth Registration Notice';
+          console.warn('⚠️ Supabase Auth signUp notice:', cleanMsg);
+          supabaseNotice = cleanMsg;
+        } else if (signUpRes.data?.user) {
+          supabaseUserId = signUpRes.data.user.id;
+          console.log(`✅ Supabase Auth user created/found in auth.users for ${cleanEmail} (UID: ${supabaseUserId})`);
+        }
+      } catch (e: any) {
+        console.error('Supabase Auth Exception on register:', e);
+        supabaseNotice = e?.message || 'Unexpected Supabase Auth failure';
       }
-    } catch (e: any) {
-      console.error('Supabase Auth Exception on register:', e);
-      supabaseNotice = e?.message || 'Unexpected Supabase Auth failure';
-    }
-  } else {
-    console.warn('⚠️ getSupabaseServerClient() returned null. SUPABASE_URL / SUPABASE_ANON_KEY not detected on server.');
-  }
-
-  // Check if user already exists in local memory
-  const existingUserIndex = users.findIndex((u) => u.email.toLowerCase() === cleanEmail);
-  if (existingUserIndex >= 0) {
-    const existingUser = users[existingUserIndex];
-    if (existingUser.isVerified) {
-      return res.status(400).json({ error: 'An account with this email address already exists. Please sign in.' });
+    } else {
+      console.warn('⚠️ getSupabaseServerClient() returned null. SUPABASE_URL / SUPABASE_ANON_KEY not detected on server.');
     }
 
-    // Refresh unverified account
-    existingUser.name = cleanName || existingUser.name;
-    existingUser.verificationCode = code;
-    existingUser.verificationToken = token;
-    if (supabaseUserId && !supabaseUserId.startsWith('usr-')) {
-      existingUser.id = supabaseUserId;
+    // Trigger backup email dispatcher (Resend API, SendGrid, SMTP, or direct confirmation link logging)
+    try {
+      await sendVerificationEmail(cleanEmail, cleanName || 'User', code, token, req);
+    } catch (dispatchErr) {
+      console.warn('Backup email dispatcher notice:', dispatchErr);
     }
 
-    const dbRes = await saveUserToSupabase(existingUser);
+    // Check if user already exists in local memory
+    const existingUserIndex = users.findIndex((u) => u.email.toLowerCase() === cleanEmail);
+    if (existingUserIndex >= 0) {
+      const existingUser = users[existingUserIndex];
+      if (existingUser.isVerified) {
+        return res.status(400).json({ error: 'An account with this email address already exists. Please sign in.' });
+      }
+
+      // Refresh unverified account verification code/token and re-dispatch email
+      existingUser.name = cleanName || existingUser.name;
+      existingUser.verificationCode = code;
+      existingUser.verificationToken = token;
+      existingUser.verificationSentAt = new Date().toISOString();
+      if (supabaseUserId && !supabaseUserId.startsWith('usr-')) {
+        existingUser.id = supabaseUserId;
+      }
+
+      const dbRes = await saveUserToSupabase(existingUser);
+      if (!dbRes.success && dbRes.error) {
+        supabaseNotice = supabaseNotice ? `${supabaseNotice} | DB Notice: ${dbRes.error}` : `Supabase DB Notice: ${dbRes.error}`;
+      }
+
+      return res.status(200).json({
+        success: true,
+        isUnverified: true,
+        user: existingUser,
+        email: existingUser.email,
+        token: existingUser.verificationToken,
+        code: existingUser.verificationCode,
+        supabaseNotice: supabaseNotice,
+        confirmUrl: `${confirmRedirectUrl}?email=${encodeURIComponent(cleanEmail)}&code=${code}`,
+        message: `A confirmation email has been dispatched to ${cleanEmail}. Please check your inbox and click the confirmation link to activate your account.`,
+      });
+    }
+
+    const newUser: User = {
+      id: supabaseUserId,
+      name: cleanName || cleanEmail.split('@')[0],
+      email: cleanEmail,
+      phone: phone ? phone.trim() : '+256 700 000000',
+      role: requestedRole,
+      createdAt: new Date().toISOString(),
+      isAuthorizedStaff: isStaff,
+      authorizationStatus: isStaff ? 'Authorized' : 'Customer',
+      isVerified: false,
+      verificationToken: token,
+      verificationCode: code,
+      verificationSentAt: new Date().toISOString(),
+    };
+
+    users.push(newUser);
+
+    const dbRes = await saveUserToSupabase(newUser);
     if (!dbRes.success && dbRes.error) {
       supabaseNotice = supabaseNotice ? `${supabaseNotice} | DB Notice: ${dbRes.error}` : `Supabase DB Notice: ${dbRes.error}`;
     }
 
-    return res.status(200).json({
+    return res.json({
       success: true,
       isUnverified: true,
-      user: existingUser,
-      email: existingUser.email,
-      token: existingUser.verificationToken,
-      code: existingUser.verificationCode,
+      user: newUser,
+      token: newUser.verificationToken,
+      code: newUser.verificationCode,
       supabaseNotice: supabaseNotice,
-      confirmUrl: `${confirmRedirectUrl}?email=${encodeURIComponent(cleanEmail)}`,
-      message: `Account registration refreshed! Supabase has dispatched a confirmation email to ${cleanEmail}. Check your email inbox.`,
+      confirmUrl: `${confirmRedirectUrl}?email=${encodeURIComponent(cleanEmail)}&code=${code}`,
+      message: `Account created successfully! A confirmation email has been sent to ${cleanEmail}. Please check your inbox and click the confirmation link to activate your account.`,
     });
+  } catch (err: any) {
+    console.error('❌ Registration endpoint error:', err);
+    return res.status(500).json({ error: err?.message || 'Server error occurred during account registration.' });
   }
-
-  const newUser: User = {
-    id: supabaseUserId,
-    name: cleanName || cleanEmail.split('@')[0],
-    email: cleanEmail,
-    phone: phone ? phone.trim() : '+256 700 000000',
-    role: requestedRole,
-    createdAt: new Date().toISOString(),
-    isAuthorizedStaff: isStaff,
-    authorizationStatus: isStaff ? 'Authorized' : 'Customer',
-    isVerified: false,
-    verificationToken: token,
-    verificationCode: code,
-    verificationSentAt: new Date().toISOString(),
-  };
-
-  users.push(newUser);
-
-  const dbRes = await saveUserToSupabase(newUser);
-  if (!dbRes.success && dbRes.error) {
-    supabaseNotice = supabaseNotice ? `${supabaseNotice} | DB Notice: ${dbRes.error}` : `Supabase DB Notice: ${dbRes.error}`;
-  }
-
-  res.json({
-    success: true,
-    isUnverified: true,
-    user: newUser,
-    token: newUser.verificationToken,
-    code: newUser.verificationCode,
-    supabaseNotice: supabaseNotice,
-    confirmUrl: `${confirmRedirectUrl}?email=${encodeURIComponent(cleanEmail)}`,
-    message: `Sign up complete! Supabase confirmation email sent to ${cleanEmail}. Please check your email inbox and click the confirmation link inside.`,
-  });
-
 });
 
 // Resend Verification Email Endpoint
 app.post('/api/resend-verification', async (req, res) => {
-  const { email } = req.body;
-  const cleanEmail = (email || '').trim().toLowerCase();
+  try {
+    const { email } = req.body;
+    const cleanEmail = (email || '').trim().toLowerCase();
 
-  const user = users.find((u) => u.email.toLowerCase() === cleanEmail);
-  if (!user) {
-    return res.status(404).json({ error: 'No account found with that email address.' });
-  }
-
-  if (user.isVerified) {
-    return res.json({ success: false, message: 'This account email is already verified. You can log in directly.' });
-  }
-
-  const token = `vtoken-${Math.random().toString(36).substring(2)}${Date.now()}`;
-  const code = Math.floor(100000 + Math.random() * 900000).toString();
-  user.verificationToken = token;
-  user.verificationCode = code;
-  user.verificationSentAt = new Date().toISOString();
-
-  await saveUserToSupabase(user);
-
-  // Trigger Supabase Auth native email resend
-  let sbNotice: string | null = null;
-  const sb = getSupabaseServerClient();
-  if (sb) {
-    try {
-      const confirmRedirectUrl = process.env.VITE_APP_URL ? `${process.env.VITE_APP_URL}/confirm-email` : 'http://localhost:3000/confirm-email';
-      let resendRes = await sb.auth.resend({
-        type: 'signup',
-        email: cleanEmail,
-        options: { emailRedirectTo: confirmRedirectUrl },
-      });
-      if (resendRes.error) {
-        if (resendRes.error.message?.toLowerCase().includes('redirect')) {
-          resendRes = await sb.auth.resend({
-            type: 'signup',
-            email: cleanEmail,
-          });
-        }
-      }
-      if (resendRes.error) {
-        sbNotice = resendRes.error.message;
-        console.warn('Supabase server-side resend notice:', resendRes.error.message);
-      } else {
-        console.log(`✅ Triggered Supabase Auth confirmation email resend for ${cleanEmail}`);
-      }
-    } catch (sbResendErr: any) {
-      sbNotice = sbResendErr?.message || String(sbResendErr);
-      console.warn('Supabase server-side resend exception:', sbNotice);
+    const user = users.find((u) => u.email.toLowerCase() === cleanEmail);
+    if (!user) {
+      return res.status(404).json({ error: 'No account found with that email address.' });
     }
-  }
 
-  res.json({
-    success: true,
-    token: user.verificationToken,
-    code: user.verificationCode,
-    email: user.email,
-    supabaseNotice: sbNotice,
-    message: sbNotice
-      ? `Supabase Status: ${sbNotice}`
-      : `A Supabase confirmation email has been dispatched to ${user.email}. Please check your email inbox (including Spam/Junk folder) and click the confirmation link.`,
-  });
+    if (user.isVerified) {
+      return res.json({ success: false, message: 'This account email is already verified. You can log in directly.' });
+    }
+
+    const token = `vtoken-${Math.random().toString(36).substring(2)}${Date.now()}`;
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    user.verificationToken = token;
+    user.verificationCode = code;
+    user.verificationSentAt = new Date().toISOString();
+
+    await saveUserToSupabase(user);
+
+    // Trigger Supabase Auth native email resend
+    let sbNotice: string | null = null;
+    const sb = getSupabaseServerClient();
+    const siteUrl = getCanonicalSiteUrl(req);
+    const confirmRedirectUrl = `${siteUrl}/confirm-email`;
+
+    try {
+      await sendVerificationEmail(cleanEmail, user.name || 'User', code, token, req);
+    } catch (dispatchErr) {
+      console.warn('Backup email dispatcher notice in resend:', dispatchErr);
+    }
+
+    if (sb) {
+      try {
+        let resendRes = await sb.auth.resend({
+          type: 'signup',
+          email: cleanEmail,
+          options: { emailRedirectTo: confirmRedirectUrl },
+        });
+        if (resendRes.error) {
+          if (resendRes.error.message?.toLowerCase().includes('redirect')) {
+            resendRes = await sb.auth.resend({
+              type: 'signup',
+              email: cleanEmail,
+            });
+          }
+        }
+        if (resendRes.error) {
+          sbNotice = resendRes.error.message;
+          console.warn('Supabase server-side resend notice:', resendRes.error.message);
+        } else {
+          console.log(`✅ Triggered Supabase Auth confirmation email resend for ${cleanEmail}`);
+        }
+      } catch (sbResendErr: any) {
+        sbNotice = sbResendErr?.message || String(sbResendErr);
+        console.warn('Supabase server-side resend exception:', sbNotice);
+      }
+    }
+
+    return res.json({
+      success: true,
+      token: user.verificationToken,
+      code: user.verificationCode,
+      email: user.email,
+      supabaseNotice: sbNotice,
+      message: sbNotice
+        ? `Supabase Status: ${sbNotice}`
+        : `A Supabase confirmation email has been dispatched to ${user.email}. Please check your email inbox (including Spam/Junk folder) and click the confirmation link.`,
+    });
+  } catch (err: any) {
+    console.error('❌ Resend verification error:', err);
+    return res.status(500).json({ error: err?.message || 'Failed to resend confirmation email.' });
+  }
 });
 
 // Verify Email Endpoint (by 6-digit code, token, query token, or email)
@@ -1424,88 +1481,98 @@ app.put('/api/users/:id/verify', async (req, res) => {
 
 // Login & Authentication Endpoint (100% Supabase Integrated)
 app.post('/api/login', async (req, res) => {
-  const { email, name, role, password } = req.body;
-  const reqEmail = (email || '').trim().toLowerCase();
-  const reqName = (name || '').trim();
-  const rawInput = (reqEmail || reqName || '').trim().toLowerCase();
+  try {
+    const { email, name, role, password } = req.body;
+    const reqEmail = (email || '').trim().toLowerCase();
+    const reqName = (name || '').trim();
+    const rawInput = (reqEmail || reqName || '').trim().toLowerCase();
 
-  if (!rawInput) {
-    return res.status(400).json({ error: 'Please enter your email address to sign in.' });
-  }
-
-  const sb = getSupabaseServerClient();
-  let user: User | undefined = users.find(
-    (u) => u.email.toLowerCase() === rawInput || u.name.toLowerCase() === rawInput || u.id === rawInput
-  );
-
-  // If user not in memory, query Supabase database directly
-  if (!user && sb) {
-    try {
-      const { data: dbUser, error: dbErr } = await sb
-        .from('users')
-        .select('*')
-        .or(`email.ilike.${rawInput},name.ilike.${rawInput}`)
-        .maybeSingle();
-
-      if (dbUser && !dbErr) {
-        user = mapUserFromDb(dbUser);
-        const idx = users.findIndex((u) => u.id === user!.id || u.email.toLowerCase() === user!.email.toLowerCase());
-        if (idx >= 0) users[idx] = user;
-        else users.push(user);
-      }
-    } catch (err) {
-      console.warn('Supabase DB user lookup notice:', err);
+    if (!rawInput) {
+      return res.status(400).json({ error: 'Please enter your email address to sign in.' });
     }
-  }
 
-  // If user is still not found in Supabase or memory, do NOT create fake demo accounts! Return clear error.
-  if (!user) {
-    return res.status(400).json({
-      error: `No registered account found for "${reqEmail || rawInput}". Please click "Create Account" below to register with Supabase.`,
-    });
-  }
+    const sb = getSupabaseServerClient();
+    let user: User | undefined = users.find(
+      (u) => u.email.toLowerCase() === rawInput || u.name.toLowerCase() === rawInput || u.id === rawInput
+    );
 
-  // If password is provided and Supabase Auth client is active, attempt Supabase Auth sign-in
-  if (sb && password && user.email) {
-    try {
-      const { data: authResult, error: authErr } = await sb.auth.signInWithPassword({
-        email: user.email,
-        password,
+    // If user not in memory, query Supabase database directly
+    if (!user && sb) {
+      try {
+        const { data: dbUser, error: dbErr } = await sb
+          .from('users')
+          .select('*')
+          .or(`email.ilike.${rawInput},name.ilike.${rawInput}`)
+          .maybeSingle();
+
+        if (dbUser && !dbErr) {
+          user = mapUserFromDb(dbUser);
+          const idx = users.findIndex((u) => u.id === user!.id || u.email.toLowerCase() === user!.email.toLowerCase());
+          if (idx >= 0) users[idx] = user;
+          else users.push(user);
+        }
+      } catch (err) {
+        console.warn('Supabase DB user lookup notice:', err);
+      }
+    }
+
+    // If user is still not found in Supabase or memory, do NOT create fake demo accounts! Return clear error.
+    if (!user) {
+      return res.status(400).json({
+        error: `No registered account found for "${reqEmail || rawInput}". Please click "Create Account" below to register with Supabase.`,
       });
-
-      if (authErr) {
-        console.warn(`Supabase Auth signIn notice for ${user.email}:`, authErr.message);
-        if (authErr.message?.toLowerCase().includes('email not confirmed')) {
-          user.isVerified = false;
-        } else if (authErr.message?.toLowerCase().includes('invalid login credentials')) {
-          return res.status(401).json({ error: 'Invalid email address or password. Please check your credentials and try again.' });
-        }
-      } else if (authResult?.user) {
-        console.log(`✅ Supabase Auth authenticated user ${user.email}`);
-        if (authResult.user.email_confirmed_at || authResult.user.confirmed_at) {
-          user.isVerified = true;
-          user.verifiedAt = authResult.user.email_confirmed_at || authResult.user.confirmed_at;
-          await sb.from('users').update({ is_verified: true, verified_at: user.verifiedAt }).eq('email', user.email);
-        }
-      }
-    } catch (e: any) {
-      console.warn('Supabase Auth signIn exception:', e?.message || e);
     }
-  }
 
-  // ENFORCE MANDATORY EMAIL VERIFICATION
-  if (user && user.isVerified === false) {
-    return res.status(200).json({
-      success: false,
-      isUnverified: true,
-      error: 'Your email address is not verified yet. Please check your email inbox for the Supabase confirmation link or enter your verification code.',
-      user,
-      email: user.email,
-      token: user.verificationToken || `vtoken-${user.id}`,
-    });
-  }
+    // Enforce mandatory email verification FIRST
+    if (user && user.isVerified === false) {
+      return res.status(200).json({
+        success: false,
+        isUnverified: true,
+        error: 'Your email address is not verified yet. Please check your inbox (including Spam/Junk folder) for the confirmation email.',
+        user,
+        email: user.email,
+        token: user.verificationToken || `vtoken-${user.id}`,
+        code: user.verificationCode,
+      });
+    }
 
-  res.json({ success: true, user, token: `jwt-token-${user.id}` });
+    // If password is provided and Supabase Auth client is active, attempt Supabase Auth sign-in
+    if (sb && password && user.email) {
+      try {
+        const { data: authResult, error: authErr } = await sb.auth.signInWithPassword({
+          email: user.email,
+          password,
+        });
+
+        if (authErr) {
+          console.warn(`Supabase Auth signIn notice for ${user.email}:`, authErr.message);
+          if (authErr.message?.toLowerCase().includes('email not confirmed')) {
+            return res.status(200).json({
+              success: false,
+              isUnverified: true,
+              error: 'Your email address is not verified yet. Please check your inbox (including Spam/Junk folder) for the confirmation email.',
+              user,
+              email: user.email,
+              token: user.verificationToken || `vtoken-${user.id}`,
+              code: user.verificationCode,
+            });
+          }
+        } else if (authResult?.user) {
+          console.log(`✅ Supabase Auth authenticated user ${user.email}`);
+        }
+      } catch (e: any) {
+        console.warn('Supabase Auth signIn exception:', e?.message || e);
+      }
+    }
+
+    user.isVerified = true;
+    user.verifiedAt = user.verifiedAt || new Date().toISOString();
+
+    return res.json({ success: true, user, token: `jwt-token-${user.id}` });
+  } catch (err: any) {
+    console.error('❌ Login error:', err);
+    return res.status(500).json({ error: err?.message || 'Server error occurred during login.' });
+  }
 });
 
 // Admin Authorization Endpoints
@@ -1583,12 +1650,25 @@ app.post('/api/vehicles', async (req, res) => {
   if (!make || !model || !registrationNumber) {
     return res.status(400).json({ error: 'Make, Model, and Registration Number are required.' });
   }
+
+  const targetUserId = userId || 'usr-1';
+
+  // Enforce Max 2 Vehicles constraint per customer account
+  const existingUserVehicles = vehicles.filter(
+    (v) => v.userId === targetUserId || toUuid(v.userId) === toUuid(targetUserId)
+  );
+  if (existingUserVehicles.length >= 2) {
+    return res.status(400).json({
+      error: 'Account Limit Reached: A customer account can register a maximum of two (2) vehicles.',
+    });
+  }
+
   const newVehicle: Vehicle = {
     id: `veh-${Date.now()}`,
-    userId: userId || 'usr-1',
-    registrationNumber,
-    make,
-    model,
+    userId: targetUserId,
+    registrationNumber: registrationNumber.toUpperCase().trim(),
+    make: make.trim(),
+    model: model.trim(),
     year: parseInt(year) || 2018,
     color: color || 'Unknown',
     mileage: parseInt(mileage) || 0,

@@ -137,8 +137,13 @@ export const AttendantDashboard: React.FC<AttendantDashboardProps> = ({
   const navigateTo = (page: PageView) => {
     setActivePage(page);
     setIsDrawerOpen(false);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    window.scrollTo({ top: 0, behavior: 'instant' });
   };
+
+  // Scroll to top on activePage change
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  }, [activePage]);
 
   // Dynamic Attendant Notifications for Entry Details & Service Completion
   const entryNotifications = reservations.map((res) => {

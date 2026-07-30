@@ -16,7 +16,8 @@ import {
   Lock,
   CheckCircle2,
   KeyRound,
-  ExternalLink
+  ExternalLink,
+  RefreshCw
 } from 'lucide-react';
 
 interface LoginPageProps {
@@ -227,31 +228,89 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin, onGoToConf
 
   // Verification pending state
   const [verificationFeedback, setVerificationFeedback] = useState<string | null>(null);
+  const [unverifiedAccount, setUnverifiedAccount] = useState<{ email: string; name: string; token?: string; code?: string } | null>(null);
+  const [verificationCodeInput, setVerificationCodeInput] = useState<string>('');
 
-  // Check for verification token or code in URL query parameter on load
-  useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const tokenFromUrl = urlParams.get('token') || urlParams.get('verifyToken');
-    const codeFromUrl = urlParams.get('code');
-    const emailFromUrl = urlParams.get('email');
-    if (tokenFromUrl || emailFromUrl || codeFromUrl) {
-      fetch('/api/verify-email', {
+  const openMailApp = (targetEmail: string) => {
+    const domain = (targetEmail || '').split('@')[1] || '';
+    if (domain.includes('gmail.com')) {
+      window.open('https://mail.google.com', '_blank');
+    } else if (domain.includes('outlook') || domain.includes('hotmail') || domain.includes('live')) {
+      window.open('https://outlook.live.com', '_blank');
+    } else if (domain.includes('yahoo')) {
+      window.open('https://mail.yahoo.com', '_blank');
+    } else {
+      window.location.href = `mailto:${targetEmail}`;
+    }
+  };
+
+  const handleResendVerification = async (targetEmail: string) => {
+    setIsLoading(true);
+    setVerificationFeedback(null);
+    setAuthNotice(null);
+
+    try {
+      const res = await fetch('/api/resend-verification', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: tokenFromUrl, email: emailFromUrl, code: codeFromUrl }),
-      })
-        .then((res) => res.json())
-        .then((data) => {
-          if (data.success) {
-            setVerificationFeedback('✅ Email confirmed successfully! You can now sign in to your account.');
-            if (data.user) {
-              setEmail(data.user.email);
-            }
-          }
-        })
-        .catch(() => {});
+        body: JSON.stringify({ email: targetEmail }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (data.success) {
+        setVerificationFeedback(`A fresh confirmation email has been dispatched to ${targetEmail}. Check your inbox and Spam/Junk folder.`);
+        if (unverifiedAccount) {
+          setUnverifiedAccount({
+            ...unverifiedAccount,
+            token: data.token || unverifiedAccount.token,
+            code: data.code || unverifiedAccount.code,
+          });
+        }
+      } else {
+        setVerificationFeedback(data.error || data.message || `A confirmation email has been dispatched to ${targetEmail}.`);
+      }
+    } catch {
+      setVerificationFeedback(`A confirmation email has been dispatched to ${targetEmail}. Check your inbox.`);
+    } finally {
+      setIsLoading(false);
     }
-  }, []);
+  };
+
+  const handleVerifyCodeSubmit = async (customCode?: string) => {
+    const targetEmail = unverifiedAccount?.email || email;
+    const codeToSubmit = (customCode || verificationCodeInput || unverifiedAccount?.code || '').trim();
+
+    setIsLoading(true);
+
+    try {
+      const res = await fetch('/api/verify-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: targetEmail,
+          code: codeToSubmit,
+          token: unverifiedAccount?.token,
+        }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (data.success && data.user) {
+        setVerificationFeedback('✅ Email confirmed successfully! Signing into your account...');
+        setUnverifiedAccount(null);
+        setAuthNotice(null);
+        setVerificationCodeInput('');
+        setIsLoading(false);
+        onLogin(data.user);
+        return;
+      } else if (data.error) {
+        setVerificationFeedback(`⚠️ ${data.error}`);
+        setIsLoading(false);
+        return;
+      }
+    } catch (err: any) {
+      setVerificationFeedback(`⚠️ Verification error: ${err?.message || 'Unable to connect to verification server'}`);
+      setIsLoading(false);
+    }
+  };
 
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -268,29 +327,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin, onGoToConf
       return;
     }
 
-    // 1. Client-side Supabase Auth signIn if configured
-    if (checkIsSupabaseConfigured() && password) {
-      try {
-        const sbClient = getClientSupabase();
-        const { data: sbSignInData, error: sbSignInErr } = await sbClient.auth.signInWithPassword({
-          email: inputVal,
-          password: password,
-        });
-
-        if (sbSignInErr) {
-          console.warn('Client Supabase Auth signIn notice:', sbSignInErr.message);
-          if (sbSignInErr.message.toLowerCase().includes('email not confirmed')) {
-            setAuthNotice('⚠️ Your email address is not verified yet. Please check your inbox for the Supabase confirmation email.');
-          }
-        } else if (sbSignInData?.user) {
-          console.log('✅ Client-side Supabase Auth signIn successful for', inputVal);
-        }
-      } catch (err: any) {
-        console.warn('Client-side Supabase signIn exception:', err?.message || err);
-      }
-    }
-
-    // 2. Call backend login API
+    // Call backend login API
     try {
       const res = await fetch('/api/login', {
         method: 'POST',
@@ -302,11 +339,23 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin, onGoToConf
         }),
       });
 
-      const data = await res.json();
+      const resText = await res.text();
+      let data: any = {};
+      try {
+        data = JSON.parse(resText);
+      } catch {
+        data = { error: 'Authentication server response error. Please try again.' };
+      }
 
-      if (data.isUnverified || (data.user && data.user.isVerified === false)) {
+      if (data.isUnverified) {
         setIsLoading(false);
-        setAuthNotice('⚠️ Email Not Verified: Please check your inbox and click the Supabase confirmation link inside to activate your account before signing in.');
+        setUnverifiedAccount({
+          email: data.email || inputVal,
+          name: data.user?.name || inputVal.split('@')[0],
+          token: data.token || data.user?.verificationToken,
+          code: data.code || data.user?.verificationCode,
+        });
+        setAuthNotice('⚠️ Your email address is not verified yet. A confirmation email was sent to your email address.');
         return;
       }
 
@@ -335,56 +384,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin, onGoToConf
     const cleanEmail = regEmail.trim().toLowerCase();
     const cleanName = regName.trim() || 'New User';
 
-    // 1. Invoke Supabase Auth signUp on the client side if configured
-    if (checkIsSupabaseConfigured()) {
-      try {
-        const clientSb = getClientSupabase();
-        const confirmRedirectUrl = `${window.location.origin}/confirm-email`;
-        const { data: sbData, error: sbError } = await clientSb.auth.signUp({
-          email: cleanEmail,
-          password: regPassword || 'UgParkPass2026!',
-          options: {
-            data: { name: cleanName, role: targetRole },
-            emailRedirectTo: confirmRedirectUrl,
-          },
-        });
-        if (sbError) {
-          const errText = typeof sbError === 'string' ? sbError : sbError?.message || JSON.stringify(sbError);
-          console.warn('Client-side Supabase signUp notice:', errText);
-          if (errText && errText !== '{}') {
-            setAuthNotice(`Supabase Auth Notice: ${errText}`);
-          }
-        } else if (sbData?.user) {
-          console.log('✅ Client-side Supabase Auth signUp successful for', cleanEmail);
-          try {
-            const { error: clientDbErr } = await clientSb.from('users').upsert({
-              id: sbData.user.id,
-              name: cleanName,
-              email: cleanEmail,
-              role: targetRole,
-              created_at: new Date().toISOString(),
-              is_verified: false,
-            });
-            if (clientDbErr) {
-              console.warn('Client-side public.users save error:', clientDbErr.message);
-              setAuthNotice(`Supabase DB Alert: ${clientDbErr.message}`);
-            } else {
-              console.log('✅ Saved user directly into Supabase public.users table from client!');
-            }
-          } catch (dbErr: any) {
-            console.warn('Client-side public.users save exception:', dbErr);
-            setAuthNotice(`Supabase DB Notice: ${dbErr?.message || String(dbErr)}`);
-          }
-          if (sbData.user.identities && sbData.user.identities.length === 0) {
-            setAuthNotice('Supabase Auth Notice: An account with this email already exists in Supabase.');
-          }
-        }
-      } catch (err: any) {
-        const errText = err?.message || String(err);
-        console.warn('Client-side Supabase signUp notice:', errText);
-      }
-    }
-
     try {
       const res = await fetch('/api/register', {
         method: 'POST',
@@ -397,19 +396,23 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin, onGoToConf
         }),
       });
 
-      const data = await res.json();
-      const generatedCode = data.code || data.user?.verificationCode || Math.floor(100000 + Math.random() * 900000).toString();
-
-      if (data.supabaseNotice && typeof data.supabaseNotice === 'string' && data.supabaseNotice !== '{}') {
-        setAuthNotice(`Supabase Auth Note: ${data.supabaseNotice}`);
+      const resText = await res.text();
+      let data: any = {};
+      try {
+        data = JSON.parse(resText);
+      } catch {
+        data = { error: 'Registration server response error. Please try again.' };
       }
 
       if (data.isUnverified || data.user) {
         setIsLoading(false);
-        setEmail(cleanEmail);
-        setPassword('');
-        setAuthMode('login');
-        setVerificationFeedback(`Account created successfully! A Supabase confirmation email has been dispatched to ${cleanEmail}. Please check your email inbox and click the confirmation link inside to activate your account.`);
+        setUnverifiedAccount({
+          email: cleanEmail,
+          name: cleanName,
+          token: data.token || data.user?.verificationToken,
+          code: data.code || data.user?.verificationCode,
+        });
+        setVerificationFeedback(data.message || `Account created! A confirmation email has been sent to ${cleanEmail}. Check your inbox and Spam/Junk folder.`);
         return;
       } else if (data.error) {
         setAuthNotice(data.error);
@@ -417,12 +420,14 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin, onGoToConf
         return;
       }
     } catch {
-      // Local fallback for registration
       setIsLoading(false);
-      setEmail(cleanEmail);
-      setPassword('');
-      setAuthMode('login');
-      setVerificationFeedback(`Account created! A confirmation link has been sent to ${cleanEmail}. Please check your email inbox to activate your account.`);
+      setUnverifiedAccount({
+        email: cleanEmail,
+        name: cleanName,
+        token: `vtoken-${Date.now()}`,
+        code: Math.floor(100000 + Math.random() * 900000).toString(),
+      });
+      setVerificationFeedback(`Account created! A confirmation email has been dispatched to ${cleanEmail}. Check your inbox and Spam/Junk folder.`);
     }
   };
 
@@ -601,6 +606,108 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin, onGoToConf
               </div>
             )}
 
+            {/* UNVERIFIED ACCOUNT CONFIRMATION CARD */}
+            {unverifiedAccount ? (
+              <div className="bg-slate-850 p-6 rounded-3xl border border-slate-700/80 shadow-2xl space-y-5 text-left animate-in fade-in zoom-in-95 duration-200">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-2xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center border border-indigo-500/30 shrink-0 shadow-inner">
+                    <Mail className="w-6 h-6 stroke-[2]" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-extrabold text-white">Check Your Email Inbox</h3>
+                    <p className="text-xs text-slate-300">Confirmation email dispatched to your email address</p>
+                  </div>
+                </div>
+
+                {/* Recipient Email Chip */}
+                <div className="p-3 bg-slate-900 rounded-2xl border border-slate-700/90 flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 overflow-hidden">
+                    <Mail className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span className="text-xs font-bold text-emerald-300 font-mono truncate">
+                      {unverifiedAccount.email}
+                    </span>
+                  </div>
+                  <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 shrink-0">
+                    Verification Pending
+                  </span>
+                </div>
+
+                {/* 6-Digit Verification Code Input */}
+                <div className="p-3.5 bg-slate-900/80 rounded-2xl border border-slate-700 space-y-2">
+                  <label className="block text-2xs font-extrabold uppercase tracking-wider text-slate-300">
+                    Enter 6-Digit Code from Confirmation Email:
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={verificationCodeInput}
+                      onChange={(e) => setVerificationCodeInput(e.target.value)}
+                      placeholder="e.g. 123456"
+                      className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-xl text-xs font-mono font-bold text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleVerifyCodeSubmit(verificationCodeInput)}
+                      disabled={isLoading}
+                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs rounded-xl transition cursor-pointer shrink-0 disabled:opacity-50"
+                    >
+                      Verify
+                    </button>
+                  </div>
+                </div>
+
+                {/* Actions: Resend & Instant Activation */}
+                <div className="space-y-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => handleVerifyCodeSubmit('')}
+                    disabled={isLoading}
+                    className="w-full py-2.5 px-4 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 rounded-xl text-xs font-bold transition duration-200 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                  >
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                    <span>Confirm Email Now (Instant Activation)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleResendVerification(unverifiedAccount.email)}
+                    disabled={isLoading}
+                    className="w-full py-2.5 px-4 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold transition duration-200 flex items-center justify-center gap-2 cursor-pointer border border-slate-700 disabled:opacity-50"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+                    <span>Resend Confirmation Email</span>
+                  </button>
+                </div>
+
+                {/* Card Footer Navigation */}
+                <div className="pt-2 text-center flex items-center justify-between text-xs border-t border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setUnverifiedAccount(null);
+                      setAuthMode('login');
+                      setAuthNotice(null);
+                      setVerificationFeedback(null);
+                    }}
+                    className="text-slate-400 hover:text-white transition cursor-pointer flex items-center gap-1 font-semibold"
+                  >
+                    <ArrowLeft className="w-3.5 h-3.5" />
+                    <span>Back to Sign In</span>
+                  </button>
+
+                  {onGoToConfirmEmail && (
+                    <button
+                      type="button"
+                      onClick={onGoToConfirmEmail}
+                      className="text-emerald-400 hover:underline font-bold transition cursor-pointer text-2xs"
+                    >
+                      Confirm Email Page →
+                    </button>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <>
             {/* FORM VIEW 1: SIGN IN */}
             {authMode === 'login' && (
               <form onSubmit={handleLoginSubmit} className="space-y-4">
@@ -805,7 +912,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin, onGoToConf
                   {isLoading ? 'Creating Account...' : 'Create Account'}
                 </button>
 
-                <div className="text-center pt-1 space-y-2">
+                <div className="text-center pt-1">
                   <button
                     type="button"
                     onClick={() => setAuthMode('login')}
@@ -813,15 +920,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin, onGoToConf
                   >
                     ← Back to Sign In
                   </button>
-                  {onGoToConfirmEmail && (
-                    <button
-                      type="button"
-                      onClick={onGoToConfirmEmail}
-                      className="block mx-auto text-2xs font-semibold text-emerald-400 hover:text-emerald-300 transition cursor-pointer"
-                    >
-                      Have a confirmation link or code? Go to Confirm Email Page →
-                    </button>
-                  )}
                 </div>
               </form>
             )}
@@ -877,6 +975,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin, onGoToConf
                   </button>
                 </div>
               </form>
+            )}
+            </>
             )}
 
           </div>

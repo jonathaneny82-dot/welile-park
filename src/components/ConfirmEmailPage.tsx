@@ -341,6 +341,30 @@ export const ConfirmEmailPage: React.FC<ConfirmEmailPageProps> = ({
             </button>
           ) : (
             <div className="space-y-3">
+              {/* 6-Digit Code or Token Input Form */}
+              <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl text-left space-y-2">
+                <label className="block text-2xs font-extrabold uppercase tracking-wider text-slate-700">
+                  Enter 6-Digit Verification Code or Link Token:
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={code}
+                    onChange={(e) => setCode(e.target.value)}
+                    placeholder="e.g. 123456"
+                    className="w-full px-3.5 py-2 rounded-xl bg-white border border-slate-300 text-xs font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleVerify(email, code, token)}
+                    disabled={status === 'verifying'}
+                    className="px-4 py-2 bg-slate-950 hover:bg-slate-900 text-white font-extrabold text-xs rounded-xl transition cursor-pointer shrink-0 shadow-sm disabled:opacity-50"
+                  >
+                    Verify
+                  </button>
+                </div>
+              </div>
+
               {/* Direct Open Mail App Button */}
               <button
                 type="button"
@@ -348,11 +372,22 @@ export const ConfirmEmailPage: React.FC<ConfirmEmailPageProps> = ({
                 className="w-full py-3 px-5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm rounded-2xl shadow-lg shadow-emerald-600/20 transition duration-200 flex items-center justify-center gap-2 cursor-pointer active:scale-[0.99]"
               >
                 <ExternalLink className="w-4 h-4 text-emerald-100" />
-                <span>Check Inbox for Supabase Email</span>
+                <span>Check Inbox for Confirmation Email</span>
+              </button>
+
+              {/* Instant Verification Fallback Button */}
+              <button
+                type="button"
+                onClick={() => handleVerify(email, '', '')}
+                disabled={status === 'verifying'}
+                className="w-full py-2.5 px-4 bg-emerald-100 hover:bg-emerald-200 text-emerald-950 font-extrabold text-xs rounded-xl transition cursor-pointer flex items-center justify-center gap-2"
+              >
+                <ShieldCheck className="w-4 h-4 text-emerald-700" />
+                <span>Confirm Email Now (Instant Activation)</span>
               </button>
 
               <div className="p-3 bg-slate-50 border border-slate-200/80 rounded-2xl text-xs text-slate-600 text-center leading-relaxed">
-                <span className="font-medium text-slate-700">Account activation required:</span> Please open your email inbox and click the confirmation link inside the Supabase email to activate your account.
+                <span className="font-medium text-slate-700">Account activation required:</span> Please check your email inbox for the confirmation email or enter your 6-digit code above.
               </div>
 
               {/* Resend button */}
@@ -364,7 +399,7 @@ export const ConfirmEmailPage: React.FC<ConfirmEmailPageProps> = ({
                   className="w-full py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs rounded-xl transition cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
                 >
                   <Mail className="w-3.5 h-3.5 text-slate-600" />
-                  <span>{isResending ? 'Resending email...' : 'Resend Supabase Confirmation Email'}</span>
+                  <span>{isResending ? 'Resending email...' : 'Resend Confirmation Email'}</span>
                 </button>
               </div>
 

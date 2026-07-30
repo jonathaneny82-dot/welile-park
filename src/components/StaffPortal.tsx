@@ -413,6 +413,11 @@ export const StaffPortal: React.FC<StaffPortalProps> = ({
   const [adminActiveTab, setAdminActiveTab] = useState<'activities' | 'services' | 'parking' | 'payments' | 'vehicles' | 'inventory'>('activities');
   const [adminSearchQuery, setAdminSearchQuery] = useState('');
 
+  // Scroll to top on managerTab or adminActiveTab change
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  }, [managerTab, adminActiveTab]);
+
   // --- Parking Attendant Actions ---
   const handleAttendantVerify = async (qrCode: string, action: 'check-in' | 'check-out') => {
     try {

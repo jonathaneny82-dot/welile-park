@@ -31,6 +31,7 @@ import {
   Check,
   Mail,
   AlertCircle,
+  AlertTriangle,
   Tag,
   Gift,
   ArrowUpRight,
@@ -41,6 +42,7 @@ import {
   BatteryCharging,
   Droplets,
   ArrowRight,
+  ArrowLeft,
   Trash2,
 } from 'lucide-react';
 import {
@@ -781,6 +783,11 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
   const [activeTab, setActiveTab] = useState<'overview' | 'parking' | 'services' | 'charging' | 'payments' | 'rewards'>('overview');
   const [viewMode, setViewMode] = useState<'tabs' | 'single'>('tabs');
 
+  // Scroll to top immediately whenever activeTab changes
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  }, [activeTab]);
+
   // Secondary Tools (Expandable drawers for vehicle management and nationwide yards)
   const [showVehicleManager, setShowVehicleManager] = useState<boolean>(false);
   const [showAddVehicleForm, setShowAddVehicleForm] = useState<boolean>(false);
@@ -792,18 +799,25 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
   // Car registration state
   const [addVehSuccess, setAddVehSuccess] = useState<string>('');
 
-  // Consolidate services rendered for customer vehicles
+  // Consolidate services rendered exclusively for the SELECTED ACTIVE VEHICLE
   const customerServices = useMemo(() => {
+    if (!activeVehicle) return [];
     return services.filter((s) => {
       if (!s) return false;
-      if (s.customerId === userId || s.customerId === currentUser?.id || toUuid(s.customerId) === toUuid(userId) || toUuid(s.customerId) === toUuid(currentUser?.id)) return true;
-      return myVehicles.some((v) => v.id === s.vehicleId || toUuid(v.id) === toUuid(s.vehicleId));
+      return s.vehicleId === activeVehicle.id || toUuid(s.vehicleId) === toUuid(activeVehicle.id);
     });
-  }, [services, userId, currentUser, myVehicles]);
+  }, [services, activeVehicle]);
+
+  // Check if any service for the active vehicle is pending completion by Service Manager
+  const hasPendingServices = useMemo(() => {
+    return customerServices.some(
+      (s) => s.status !== ServiceStatus.COMPLETED && s.status !== ServiceStatus.READY_FOR_PICKUP
+    );
+  }, [customerServices]);
 
   // Itemized rendered services list for the customer's active operations
   const renderedItemsList = useMemo(() => {
-    const list: { id: string; title: string; category: string; vehicleReg: string; cost: number; details: string }[] = [];
+    const list: { id: string; title: string; category: string; vehicleReg: string; cost: number; details: string; isPending?: boolean }[] = [];
 
     // 1. Car Parking Reservation / Spot Fee if active
     if (hoursRemaining > 0) {
@@ -814,32 +828,35 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
         vehicleReg: activeVehicle?.registrationNumber || 'Registered Vehicle',
         cost: 5000,
         details: `Floor ${currentFloor}, Slot ${currentSlot} (${hoursRemaining} hrs remaining)`,
+        isPending: false,
       });
     }
 
-    // 2. Rendered / Requested Services from backend for THIS customer
+    // 2. Rendered / Requested Services from backend for THIS vehicle
     if (customerServices.length > 0) {
       customerServices.forEach((srv) => {
-        const veh = myVehicles.find((v) => v.id === srv.vehicleId) || activeVehicle;
         let cat = 'Garage Service';
         const st = srv.serviceType.toLowerCase();
         if (st.includes('wash')) cat = 'Car Wash';
         else if (st.includes('oil')) cat = 'Oil Change';
         else if (st.includes('charging') || st.includes('ev')) cat = 'EV Charging';
 
+        const isPendingSrv = srv.status !== ServiceStatus.COMPLETED && srv.status !== ServiceStatus.READY_FOR_PICKUP;
+
         list.push({
           id: srv.id,
           title: srv.serviceType,
           category: cat,
-          vehicleReg: veh?.registrationNumber || 'Vehicle',
+          vehicleReg: activeVehicle?.registrationNumber || 'Vehicle',
           cost: srv.cost || 25000,
           details: srv.diagnosticNotes || `Status: ${srv.status}`,
+          isPending: isPendingSrv,
         });
       });
     }
 
     return list;
-  }, [customerServices, myVehicles, activeVehicle, currentFloor, currentSlot, hoursRemaining]);
+  }, [customerServices, activeVehicle, currentFloor, currentSlot, hoursRemaining]);
 
   // Grand Total Cost Calculation for all services rendered
   const totalCalculatedCostUGX = useMemo(() => {
@@ -1013,6 +1030,11 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
   const handleAddVehicleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newReg || !newMake || !newModel) return;
+
+    if (myVehicles.length >= 2) {
+      alert('Account Limit Reached: A customer account can register a maximum of two (2) vehicles.');
+      return;
+    }
 
     const cleanReg = newReg.toUpperCase().trim();
     const cleanMake = newMake.trim();
@@ -1243,15 +1265,21 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
         <div className="bg-slate-900 text-white rounded-2xl p-4 space-y-3 shadow-lg">
           <div className="flex items-center justify-between border-b border-slate-800 pb-2">
             <span className="text-xs font-bold uppercase tracking-wider font-mono text-slate-300">
-              My Registered Vehicles ({myVehicles.length})
+              My Registered Vehicles ({myVehicles.length}/2 Max)
             </span>
-            <button
-              onClick={() => setShowAddVehicleForm(!showAddVehicleForm)}
-              className="text-xs font-bold text-emerald-400 hover:underline flex items-center gap-1 cursor-pointer"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              Add New Car
-            </button>
+            {myVehicles.length < 2 ? (
+              <button
+                onClick={() => setShowAddVehicleForm(!showAddVehicleForm)}
+                className="text-xs font-bold text-emerald-400 hover:underline flex items-center gap-1 cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Add New Car
+              </button>
+            ) : (
+              <span className="text-3xs font-mono font-bold text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded border border-amber-400/30">
+                🔒 Max 2 Vehicles Limit Reached
+              </span>
+            )}
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -1273,6 +1301,7 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
                     onClick={() => {
                       setSelectedVehicleId(v.id);
                       setShowVehicleManager(false);
+                      window.scrollTo({ top: 0, behavior: 'smooth' });
                     }}
                     className="flex-1 cursor-pointer pr-2"
                   >
@@ -1298,7 +1327,7 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
             )}
           </div>
 
-          {(showAddVehicleForm || myVehicles.length === 0) && (
+          {(showAddVehicleForm && myVehicles.length < 2) && (
             <form onSubmit={handleAddVehicleSubmit} className="pt-3 border-t border-slate-800 space-y-3">
               {addVehSuccess && (
                 <div className="p-2.5 bg-emerald-950/80 border border-emerald-500/50 text-emerald-300 text-xs font-bold rounded-xl flex items-center gap-2">
@@ -1345,125 +1374,150 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
         </div>
       )}
 
-      {/* ================= ENLARGED COLORFUL TOP ACTION & STATUS CARDS ================= */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* 1. PARKING CARD */}
-        <div className="bg-gradient-to-br from-emerald-600 via-teal-700 to-emerald-900 text-white rounded-2xl p-5 shadow-lg border border-emerald-400/40 flex flex-col justify-between space-y-4 hover:shadow-xl transition">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-mono font-bold uppercase tracking-wider text-emerald-200 flex items-center gap-1.5">
-              🅿️ Parking Spot
-            </span>
-            <MapPin className="w-5 h-5 text-emerald-200" />
+      {/* ================= ENLARGED COLORFUL TOP ACTION & STATUS CARDS (OVERVIEW ONLY) ================= */}
+      {activeTab === 'overview' && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* 1. PARKING CARD */}
+          <div className="bg-gradient-to-br from-emerald-600 via-teal-700 to-emerald-900 text-white rounded-2xl p-5 shadow-lg border border-emerald-400/40 flex flex-col justify-between space-y-4 hover:shadow-xl transition">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-mono font-bold uppercase tracking-wider text-emerald-200 flex items-center gap-1.5">
+                🅿️ Parking Spot
+              </span>
+              <MapPin className="w-5 h-5 text-emerald-200" />
+            </div>
+            <div>
+              <span className="font-extrabold text-2xl md:text-3xl tracking-tight block">
+                Floor {currentFloor}, Slot {currentSlot}
+              </span>
+              <span className="text-xs font-medium text-emerald-100/90 block mt-1">
+                {hoursRemaining} hour(s) active time remaining
+              </span>
+            </div>
+            <button
+              onClick={() => {
+                setActiveTab('parking');
+                setParkingStep('yard');
+                window.scrollTo({ top: 0, behavior: 'instant' });
+              }}
+              className="w-full py-2.5 px-3 bg-white text-emerald-900 hover:bg-emerald-50 text-xs font-extrabold rounded-xl transition cursor-pointer shadow-sm flex items-center justify-center gap-2"
+            >
+              <span>Manage Parking / Find Available Slot</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
           </div>
-          <div>
-            <span className="font-extrabold text-2xl md:text-3xl tracking-tight block">
-              Floor {currentFloor}, Slot {currentSlot}
-            </span>
-            <span className="text-xs font-medium text-emerald-100/90 block mt-1">
-              {hoursRemaining} hour(s) active time remaining
-            </span>
-          </div>
-          <button
-            onClick={() => {
-              setActiveTab('parking');
-              setParkingStep('yard');
-            }}
-            className="w-full py-2.5 px-3 bg-white text-emerald-900 hover:bg-emerald-50 text-xs font-extrabold rounded-xl transition cursor-pointer shadow-sm flex items-center justify-center gap-2"
-          >
-            <span>Manage Parking / Find Available Slot</span>
-            <ArrowRight className="w-4 h-4" />
-          </button>
-        </div>
 
-        {/* 2. SERVICE CARD */}
-        <div className="bg-gradient-to-br from-blue-600 via-indigo-700 to-blue-900 text-white rounded-2xl p-5 shadow-lg border border-blue-400/40 flex flex-col justify-between space-y-4 hover:shadow-xl transition">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-mono font-bold uppercase tracking-wider text-blue-200 flex items-center gap-1.5">
-              🔧 Vehicle Service
-            </span>
-            <Wrench className="w-5 h-5 text-blue-200" />
+          {/* 2. SERVICE CARD */}
+          <div className="bg-gradient-to-br from-blue-600 via-indigo-700 to-blue-900 text-white rounded-2xl p-5 shadow-lg border border-blue-400/40 flex flex-col justify-between space-y-4 hover:shadow-xl transition">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-mono font-bold uppercase tracking-wider text-blue-200 flex items-center gap-1.5">
+                🔧 Vehicle Service
+              </span>
+              <Wrench className="w-5 h-5 text-blue-200" />
+            </div>
+            <div>
+              <span className="font-extrabold text-xl md:text-2xl tracking-tight block truncate">
+                {serviceName || 'Maintenance Care'}
+              </span>
+              <span className="text-xs font-medium text-blue-100/90 block mt-1">
+                Status: {serviceProgress}% Completed
+              </span>
+            </div>
+            <button
+              onClick={() => {
+                setActiveTab('services');
+                setServiceStep('workshop');
+                window.scrollTo({ top: 0, behavior: 'instant' });
+              }}
+              className="w-full py-2.5 px-3 bg-white text-blue-900 hover:bg-blue-50 text-xs font-extrabold rounded-xl transition cursor-pointer shadow-sm flex items-center justify-center gap-2"
+            >
+              <span>Request / Track Service</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
           </div>
-          <div>
-            <span className="font-extrabold text-xl md:text-2xl tracking-tight block truncate">
-              {serviceName || 'Maintenance Care'}
-            </span>
-            <span className="text-xs font-medium text-blue-100/90 block mt-1">
-              Status: {serviceProgress}% Completed
-            </span>
-          </div>
-          <button
-            onClick={() => {
-              setActiveTab('services');
-              setServiceStep('workshop');
-            }}
-            className="w-full py-2.5 px-3 bg-white text-blue-900 hover:bg-blue-50 text-xs font-extrabold rounded-xl transition cursor-pointer shadow-sm flex items-center justify-center gap-2"
-          >
-            <span>Request / Track Service</span>
-            <ArrowRight className="w-4 h-4" />
-          </button>
-        </div>
 
-        {/* 3. EV CHARGING CARD */}
-        <div className="bg-gradient-to-br from-amber-500 via-amber-600 to-orange-800 text-white rounded-2xl p-5 shadow-lg border border-amber-300/40 flex flex-col justify-between space-y-4 hover:shadow-xl transition">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-mono font-bold uppercase tracking-wider text-amber-100 flex items-center gap-1.5">
-              ⚡ EV Charging
-            </span>
-            <Zap className="w-5 h-5 text-amber-200" />
+          {/* 3. EV CHARGING CARD */}
+          <div className="bg-gradient-to-br from-amber-500 via-amber-600 to-orange-800 text-white rounded-2xl p-5 shadow-lg border border-amber-300/40 flex flex-col justify-between space-y-4 hover:shadow-xl transition">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-mono font-bold uppercase tracking-wider text-amber-100 flex items-center gap-1.5">
+                ⚡ EV Charging
+              </span>
+              <Zap className="w-5 h-5 text-amber-200" />
+            </div>
+            <div>
+              <span className="font-extrabold text-xl md:text-2xl tracking-tight block">
+                {NEARBY_EV_STATIONS.length} Supercharger Hubs
+              </span>
+              <span className="text-xs font-medium text-amber-100/90 block mt-1">
+                Fast DC (150 kW) & AC Plugs
+              </span>
+            </div>
+            <button
+              onClick={() => {
+                setActiveTab('charging');
+                setEvStep('station');
+                window.scrollTo({ top: 0, behavior: 'instant' });
+              }}
+              className="w-full py-2.5 px-3 bg-slate-900 text-amber-300 hover:bg-slate-800 text-xs font-extrabold rounded-xl transition cursor-pointer shadow-sm flex items-center justify-center gap-2"
+            >
+              <span>Charge EV / View Stations</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
           </div>
-          <div>
-            <span className="font-extrabold text-xl md:text-2xl tracking-tight block">
-              {NEARBY_EV_STATIONS.length} Supercharger Hubs
-            </span>
-            <span className="text-xs font-medium text-amber-100/90 block mt-1">
-              Fast DC (150 kW) & AC Plugs
-            </span>
-          </div>
-          <button
-            onClick={() => {
-              setActiveTab('charging');
-              setEvStep('station');
-            }}
-            className="w-full py-2.5 px-3 bg-slate-900 text-amber-300 hover:bg-slate-800 text-xs font-extrabold rounded-xl transition cursor-pointer shadow-sm flex items-center justify-center gap-2"
-          >
-            <span>Charge EV / View Stations</span>
-            <ArrowRight className="w-4 h-4" />
-          </button>
-        </div>
 
-        {/* 4. INVOICE & PAYMENTS CARD */}
-        <div className="bg-gradient-to-br from-purple-700 via-purple-900 to-slate-950 text-white rounded-2xl p-5 shadow-lg border border-purple-400/40 flex flex-col justify-between space-y-4 hover:shadow-xl transition">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-mono font-bold uppercase tracking-wider text-purple-200 flex items-center gap-1.5">
-              💳 Invoice & Payments
-            </span>
-            <CreditCard className="w-5 h-5 text-purple-200" />
+          {/* 4. INVOICE & PAYMENTS CARD */}
+          <div className="bg-gradient-to-br from-purple-700 via-purple-900 to-slate-950 text-white rounded-2xl p-5 shadow-lg border border-purple-400/40 flex flex-col justify-between space-y-4 hover:shadow-xl transition">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-mono font-bold uppercase tracking-wider text-purple-200 flex items-center gap-1.5">
+                💳 Invoice & Payments
+              </span>
+              <CreditCard className="w-5 h-5 text-purple-200" />
+            </div>
+            <div>
+              <span className="font-extrabold text-xl md:text-2xl font-mono tracking-tight block">
+                UGX {isPaymentSettled ? '0' : totalCalculatedCostUGX.toLocaleString()}
+              </span>
+              <span className="text-xs font-medium text-purple-200/90 block mt-1">
+                {isPaymentSettled ? 'Invoice Settled ✓' : 'Itemized Vehicle Invoice'}
+              </span>
+            </div>
+            <button
+              onClick={() => {
+                setActiveTab('payments');
+                setPayStep('bills');
+                window.scrollTo({ top: 0, behavior: 'instant' });
+              }}
+              className="w-full py-2.5 px-3 bg-white text-purple-950 hover:bg-purple-50 text-xs font-extrabold rounded-xl transition cursor-pointer shadow-sm flex items-center justify-center gap-2"
+            >
+              <span>{isPaymentSettled ? 'View Paid Receipt' : 'Pay Invoice Now'}</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
           </div>
-          <div>
-            <span className="font-extrabold text-xl md:text-2xl font-mono tracking-tight block">
-              UGX {isPaymentSettled ? '0' : totalCalculatedCostUGX.toLocaleString()}
-            </span>
-            <span className="text-xs font-medium text-purple-200/90 block mt-1">
-              {isPaymentSettled ? 'Invoice Settled ✓' : 'Itemized Consolidated Bill'}
-            </span>
-          </div>
-          <button
-            onClick={() => {
-              setActiveTab('payments');
-              setPayStep('bills');
-            }}
-            className="w-full py-2.5 px-3 bg-white text-purple-950 hover:bg-purple-50 text-xs font-extrabold rounded-xl transition cursor-pointer shadow-sm flex items-center justify-center gap-2"
-          >
-            <span>{isPaymentSettled ? 'View Paid Receipt' : 'Pay Invoice Now'}</span>
-            <ArrowRight className="w-4 h-4" />
-          </button>
         </div>
-      </div>
+      )}
 
       {/* ================= MAIN CONTENT RENDER AREA ================= */}
 
+      {/* BACK BUTTON FOR DEDICATED PAGES */}
+      {activeTab !== 'overview' && (
+        <div className="flex items-center justify-between pb-1">
+          <button
+            onClick={() => {
+              setActiveTab('overview');
+              window.scrollTo({ top: 0, behavior: 'instant' });
+            }}
+            className="inline-flex items-center gap-2 px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-extrabold transition cursor-pointer shadow-sm border border-slate-700"
+          >
+            <ArrowLeft className="w-4 h-4 text-emerald-400" />
+            <span>← Back to Dashboard</span>
+          </button>
+          <span className="text-2xs font-mono font-bold uppercase tracking-wider text-slate-500 bg-slate-100 px-2.5 py-1 rounded-lg">
+            {activeTab} view
+          </span>
+        </div>
+      )}
+
       {/* --- TAB 1: OVERVIEW TAB --- */}
-      {(viewMode === 'single' || activeTab === 'overview') && (
+      {activeTab === 'overview' && (
         <div className="space-y-6">
           {/* Notifications Alert Banner */}
           {!isNotificationDismissed && (
@@ -1541,7 +1595,7 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
       )}
 
       {/* --- TAB 2: PARKING & YARDS TAB --- */}
-      {(viewMode === 'single' || activeTab === 'parking') && (
+      {activeTab === 'parking' && (
         <div className="space-y-6">
           {/* NEARBY PARK YARDS FINDER & DISCOVERY HUB */}
           <div className="bg-slate-900 text-white rounded-2xl p-5 shadow-xl space-y-4 border border-slate-800">
@@ -1855,7 +1909,7 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
       )}
 
       {/* --- TAB 3: CAR SERVICES & WASH TAB --- */}
-      {(viewMode === 'single' || activeTab === 'services') && (
+      {activeTab === 'services' && (
         <div className="space-y-6">
           
           {/* Completed Vehicle Handoff Alert Banner */}
@@ -2093,7 +2147,7 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
       )}
 
       {/* --- TAB 4: EV CHARGING TAB --- */}
-      {(viewMode === 'single' || activeTab === 'charging') && (
+      {activeTab === 'charging' && (
         <div className="space-y-6">
           {/* SECTION 3B: EV CHARGING SERVICES */}
           <div className="bg-gradient-to-br from-slate-900 via-slate-850 to-indigo-950 text-white border border-emerald-500/40 rounded-2xl p-6 shadow-md space-y-4 relative overflow-hidden">
@@ -2168,7 +2222,7 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
       )}
 
       {/* --- TAB 5: PAYMENTS & CONSOLIDATED INVOICE TAB --- */}
-      {(viewMode === 'single' || activeTab === 'payments') && (
+      {activeTab === 'payments' && (
         <div className="space-y-6">
           {/* SECTION 5: PAYMENTS & CONSOLIDATED INVOICE */}
           <div className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-sm space-y-4">
@@ -2248,21 +2302,38 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
               </div>
             </div>
 
+            {/* Service Invoice Status Notice */}
+            {hasPendingServices && (
+              <div className="p-3 bg-amber-50 border border-amber-300 text-amber-900 rounded-xl text-xs space-y-1 font-medium">
+                <div className="flex items-center gap-1.5 font-bold text-amber-900">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span>Service Invoice Pending Completion</span>
+                </div>
+                <p className="text-3xs text-amber-800 leading-relaxed">
+                  Service invoices remain pending while the vehicle is being serviced. A service invoice becomes payable only after all assigned services have been completed and marked complete by the Service Manager.
+                </p>
+              </div>
+            )}
+
             {/* Action Button */}
             <button
-              disabled={isPaymentSettled}
+              disabled={isPaymentSettled || hasPendingServices}
               onClick={() => setShowPayNowModal(true)}
               className={`w-full py-3 px-4 text-white font-bold text-xs rounded-xl shadow-xs transition duration-150 flex items-center justify-center gap-1.5 ${
                 isPaymentSettled
                   ? 'bg-slate-300 cursor-not-allowed text-slate-600'
+                  : hasPendingServices
+                  ? 'bg-amber-100 text-amber-900 border border-amber-300 cursor-not-allowed'
                   : 'bg-emerald-600 hover:bg-emerald-700 cursor-pointer'
               }`}
             >
               <CreditCard className="w-4 h-4" />
               <span>
                 {isPaymentSettled
-                  ? 'All Services Rendered Paid / Cleared ✓'
-                  : `Pay All Rendered Services at Once (UGX ${totalCalculatedCostUGX.toLocaleString()})`}
+                  ? 'Vehicle Invoice Settled & Cleared ✓'
+                  : hasPendingServices
+                  ? '🔒 Service In Progress — Cannot settle service invoice until marked complete by Service Manager'
+                  : `Pay Vehicle Invoice (UGX ${totalCalculatedCostUGX.toLocaleString()})`}
               </span>
             </button>
           </div>
@@ -2298,7 +2369,7 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
       )}
 
       {/* --- TAB 6: VIP REWARDS TAB --- */}
-      {(viewMode === 'single' || activeTab === 'rewards') && (
+      {activeTab === 'rewards' && (
         <div className="space-y-6">
           {/* SECTION 4: REWARDS */}
           <div className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-sm space-y-4">

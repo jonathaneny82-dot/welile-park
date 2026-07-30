@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { UserRole, User, Vehicle, ParkingSpace, ParkingReservation, VehicleService, InventoryItem, Payment } from '../types';
 import { CustomerPortal } from './CustomerPortal';
 import { StaffPortal } from './StaffPortal';
@@ -82,6 +82,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'workflows' | 'permissions' | 'executions'>('workflows');
   const [activeNav, setActiveNav] = useState<'home' | 'workflows' | 'permissions' | 'activities' | 'reports' | 'revenue' | 'settings'>('home');
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  }, [activeTab, activeNav]);
   const [searchQuery, setSearchQuery] = useState('');
   const [showRoleMenu, setShowRoleMenu] = useState(false);
 
