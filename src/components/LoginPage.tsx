@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { UserRole, User } from '../types';
-import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { getClientSupabase, checkIsSupabaseConfigured } from '../lib/supabase';
 import { 
   User as UserIcon, 
   Eye, 
@@ -455,10 +455,11 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin, onGoToConf
     const cleanName = regName.trim() || 'New User';
 
     // 1. Invoke Supabase Auth signUp on the client side if configured
-    if (isSupabaseConfigured) {
+    if (checkIsSupabaseConfigured()) {
       try {
+        const clientSb = getClientSupabase();
         const confirmRedirectUrl = `${window.location.origin}/confirm-email`;
-        const { data: sbData, error: sbError } = await supabase.auth.signUp({
+        const { data: sbData, error: sbError } = await clientSb.auth.signUp({
           email: cleanEmail,
           password: regPassword || 'UgParkPass2026!',
           options: {
@@ -468,7 +469,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin, onGoToConf
         });
         if (sbError) {
           console.warn('Client-side Supabase signUp notice:', sbError.message);
-          setAuthNotice(`Supabase Auth Note: ${sbError.message}`);
+          setAuthNotice(`Supabase Auth Notice: ${sbError.message}`);
         } else if (sbData?.user) {
           console.log('✅ Client-side Supabase Auth signUp successful for', cleanEmail);
         }
@@ -491,6 +492,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin, onGoToConf
 
       const data = await res.json();
       const generatedCode = data.code || data.user?.verificationCode || Math.floor(100000 + Math.random() * 900000).toString();
+
+      if (data.supabaseNotice) {
+        setAuthNotice(`Supabase Auth Note: ${data.supabaseNotice}`);
+      }
 
       if (data.isUnverified || data.user) {
         setIsLoading(false);
@@ -668,7 +673,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin, onGoToConf
               
               {/* Supabase Connection Status Indicator */}
               <div className="mt-2.5 flex justify-center">
-                {isSupabaseConfigured ? (
+                {checkIsSupabaseConfigured() ? (
                   <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[11px] font-medium rounded-full">
                     <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
                     <span>Supabase Auth Connected</span>

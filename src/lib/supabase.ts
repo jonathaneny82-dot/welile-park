@@ -12,6 +12,14 @@ export let supabase: SupabaseClient = createClient(
   initialKey || 'placeholder-anon-key'
 );
 
+export function getClientSupabase(): SupabaseClient {
+  return supabase;
+}
+
+export function checkIsSupabaseConfigured(): boolean {
+  return isSupabaseConfigured;
+}
+
 // Self-healing runtime fetch for Supabase client credentials from backend if VITE_ env was not baked into build
 if (!isSupabaseConfigured && typeof window !== 'undefined') {
   fetch('/api/supabase/config')
