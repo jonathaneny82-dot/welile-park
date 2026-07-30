@@ -467,6 +467,25 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin, onGoToConf
           }
         } else if (sbData?.user) {
           console.log('✅ Client-side Supabase Auth signUp successful for', cleanEmail);
+          try {
+            const { error: clientDbErr } = await clientSb.from('users').upsert({
+              id: sbData.user.id,
+              name: cleanName,
+              email: cleanEmail,
+              role: targetRole,
+              created_at: new Date().toISOString(),
+              is_verified: false,
+            });
+            if (clientDbErr) {
+              console.warn('Client-side public.users save error:', clientDbErr.message);
+              setAuthNotice(`Supabase DB Alert: ${clientDbErr.message}`);
+            } else {
+              console.log('✅ Saved user directly into Supabase public.users table from client!');
+            }
+          } catch (dbErr: any) {
+            console.warn('Client-side public.users save exception:', dbErr);
+            setAuthNotice(`Supabase DB Notice: ${dbErr?.message || String(dbErr)}`);
+          }
           if (sbData.user.identities && sbData.user.identities.length === 0) {
             setAuthNotice('Supabase Auth Notice: An account with this email already exists in Supabase.');
           }

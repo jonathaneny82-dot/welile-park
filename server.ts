@@ -102,7 +102,7 @@ app.get('/api/supabase/config', (req, res) => {
   });
 });
 
-// --- SUPABASE DATABASE MAPPER HELPERS ---
+// --- SUPABASE DATABASE MAPPER & PERSISTENCE HELPERS ---
 
 import crypto from 'crypto';
 
@@ -147,6 +147,56 @@ function mapUserFromDb(row: any): User {
     verificationSentAt: row.verification_sent_at,
     verifiedAt: row.verified_at,
   };
+}
+
+async function saveUserToSupabase(user: User): Promise<{ success: boolean; error?: string }> {
+  const sb = getSupabaseServerClient();
+  if (!sb) {
+    console.warn(`⚠️ Cannot save user ${user.email} to Supabase: client not initialized.`);
+    return { success: false, error: 'Supabase client not initialized (check VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY)' };
+  }
+
+  const dbUser = mapUserToDb(user);
+  console.log(`💾 Saving user ${user.email} (ID: ${dbUser.id}) to Supabase public.users...`);
+
+  // Attempt 1: Full upsert
+  const { error: err1 } = await sb.from('users').upsert(dbUser);
+  if (!err1) {
+    console.log(`✅ Supabase DB: Successfully saved user ${user.email} in public.users`);
+    return { success: true };
+  }
+
+  console.warn(`⚠️ Full upsert into users table returned notice for ${user.email}: ${err1.message}`);
+
+  // Attempt 2: Minimal columns upsert
+  const minUser = {
+    id: dbUser.id,
+    name: user.name,
+    email: user.email,
+    phone: user.phone || null,
+    role: user.role || 'Customer',
+    created_at: dbUser.created_at || new Date().toISOString(),
+    is_verified: user.isVerified ?? false,
+  };
+
+  const { error: err2 } = await sb.from('users').upsert(minUser);
+  if (!err2) {
+    console.log(`✅ Supabase DB: Minimal columns upsert succeeded for user ${user.email}`);
+    return { success: true };
+  }
+
+  console.warn(`⚠️ Minimal upsert failed: ${err2.message}`);
+
+  // Attempt 3: Direct insert
+  const { error: err3 } = await sb.from('users').insert(minUser);
+  if (!err3) {
+    console.log(`✅ Supabase DB: Minimal insert succeeded for user ${user.email}`);
+    return { success: true };
+  }
+
+  const finalErrMsg = err1?.message || err2?.message || err3?.message || 'Failed to insert row into public.users';
+  console.error(`❌ All attempts to write user ${user.email} to Supabase public.users failed: ${finalErrMsg}`);
+  return { success: false, error: finalErrMsg };
 }
 
 function mapVehicleToDb(v: Vehicle) {
@@ -1190,12 +1240,9 @@ app.post('/api/register', async (req, res) => {
       existingUser.id = supabaseUserId;
     }
 
-    if (sb) {
-      try {
-        await sb.from('users').upsert(mapUserToDb(existingUser));
-      } catch (e) {
-        console.error('Supabase save user error on update:', e);
-      }
+    const dbRes = await saveUserToSupabase(existingUser);
+    if (!dbRes.success && dbRes.error) {
+      supabaseNotice = supabaseNotice ? `${supabaseNotice} | DB Notice: ${dbRes.error}` : `Supabase DB Notice: ${dbRes.error}`;
     }
 
     await sendVerificationEmail(existingUser.email, existingUser.name, code, token);
@@ -1230,12 +1277,9 @@ app.post('/api/register', async (req, res) => {
 
   users.push(newUser);
 
-  if (sb) {
-    try {
-      await sb.from('users').upsert(mapUserToDb(newUser));
-    } catch (e) {
-      console.error('Supabase save user error on registration:', e);
-    }
+  const dbRes = await saveUserToSupabase(newUser);
+  if (!dbRes.success && dbRes.error) {
+    supabaseNotice = supabaseNotice ? `${supabaseNotice} | DB Notice: ${dbRes.error}` : `Supabase DB Notice: ${dbRes.error}`;
   }
 
   // Dispatch email notification
@@ -1326,13 +1370,7 @@ app.all('/api/verify-email', async (req, res) => {
   user.verificationToken = undefined;
   user.verificationCode = undefined;
 
-  if (supabase) {
-    try {
-      await supabase.from('users').upsert(mapUserToDb(user));
-    } catch (e) {
-      console.error('Supabase verify user error:', e);
-    }
-  }
+  await saveUserToSupabase(user);
 
   res.json({
     success: true,
