@@ -75,13 +75,23 @@ try {
   console.error('Error initializing Gemini client:', error);
 }
 
-// Supabase Status API
+// Supabase Status API & Config API
 app.get('/api/supabase/status', (req, res) => {
   const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
   const key = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
   res.json({
     configured: Boolean(url && key),
     supabaseUrl: url ? url.substring(0, 12) + '...' : null,
+  });
+});
+
+app.get('/api/supabase/config', (req, res) => {
+  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '';
+  const key = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || '';
+  res.json({
+    supabaseUrl: url,
+    supabaseAnonKey: key,
+    configured: Boolean(url && key && !url.includes('placeholder')),
   });
 });
 
@@ -1137,9 +1147,11 @@ app.post('/api/register', async (req, res) => {
   let supabaseUserId = `usr-${Date.now()}`;
 
   // Call Supabase Auth signUp if Supabase client is initialized
+  let supabaseNotice: string | null = null;
   if (supabase) {
     try {
-      const { data: authData, error: authErr } = await supabase.auth.signUp({
+      console.log(` Attempting Supabase Auth signUp for ${cleanEmail}...`);
+      let signUpRes = await supabase.auth.signUp({
         email: cleanEmail,
         password: password || 'UgParkPass2026!',
         options: {
@@ -1147,14 +1159,29 @@ app.post('/api/register', async (req, res) => {
           emailRedirectTo: confirmRedirectUrl,
         },
       });
-      if (authErr) {
-        console.warn('Supabase Auth signUp notice:', authErr.message);
-      } else if (authData?.user) {
-        supabaseUserId = authData.user.id;
-        console.log(`✅ Supabase Auth signUp initiated for ${cleanEmail} (ID: ${supabaseUserId})`);
+
+      // If redirect URL is restricted in Supabase Auth settings, retry without emailRedirectTo
+      if (signUpRes.error && signUpRes.error.message?.toLowerCase().includes('redirect')) {
+        console.warn(`⚠️ Supabase Auth redirect URL notice: ${signUpRes.error.message}. Retrying signUp without explicit emailRedirectTo...`);
+        signUpRes = await supabase.auth.signUp({
+          email: cleanEmail,
+          password: password || 'UgParkPass2026!',
+          options: {
+            data: { name: cleanName, role: requestedRole, phone: phone || '' },
+          },
+        });
       }
-    } catch (e) {
+
+      if (signUpRes.error) {
+        console.warn('❌ Supabase Auth signUp error:', signUpRes.error.message);
+        supabaseNotice = signUpRes.error.message;
+      } else if (signUpRes.data?.user) {
+        supabaseUserId = signUpRes.data.user.id;
+        console.log(`✅ Supabase Auth user successfully registered in Supabase auth.users for ${cleanEmail} (UID: ${supabaseUserId})`);
+      }
+    } catch (e: any) {
       console.error('Supabase Auth Exception on register:', e);
+      supabaseNotice = e?.message || 'Unexpected Supabase Auth failure';
     }
   }
 

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { UserRole, User } from '../types';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { 
   User as UserIcon, 
   Eye, 
@@ -453,6 +454,29 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin, onGoToConf
     const cleanEmail = regEmail.trim().toLowerCase();
     const cleanName = regName.trim() || 'New User';
 
+    // 1. Invoke Supabase Auth signUp on the client side if configured
+    if (isSupabaseConfigured) {
+      try {
+        const confirmRedirectUrl = `${window.location.origin}/confirm-email`;
+        const { data: sbData, error: sbError } = await supabase.auth.signUp({
+          email: cleanEmail,
+          password: regPassword || 'UgParkPass2026!',
+          options: {
+            data: { name: cleanName, role: targetRole },
+            emailRedirectTo: confirmRedirectUrl,
+          },
+        });
+        if (sbError) {
+          console.warn('Client-side Supabase signUp notice:', sbError.message);
+          setAuthNotice(`Supabase Auth Note: ${sbError.message}`);
+        } else if (sbData?.user) {
+          console.log('✅ Client-side Supabase Auth signUp successful for', cleanEmail);
+        }
+      } catch (err) {
+        console.warn('Client-side Supabase signUp notice:', err);
+      }
+    }
+
     try {
       const res = await fetch('/api/register', {
         method: 'POST',
@@ -460,6 +484,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin, onGoToConf
         body: JSON.stringify({
           name: cleanName,
           email: cleanEmail,
+          password: regPassword,
           role: targetRole,
         }),
       });
@@ -475,7 +500,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin, onGoToConf
           token: data.token || data.user?.verificationToken,
           code: generatedCode,
         });
-        setVerificationFeedback(`A verification email has been dispatched to ${cleanEmail}.`);
+        setVerificationFeedback(`A Supabase confirmation link has been sent to ${cleanEmail}. Please check your email inbox to activate your account!`);
         return;
       } else if (data.error) {
         setAuthNotice(data.error);
@@ -492,7 +517,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin, onGoToConf
         token: `vtoken-${Date.now()}`,
         code: fallbackCode,
       });
-      setVerificationFeedback(`A verification email has been dispatched to ${cleanEmail}.`);
+      setVerificationFeedback(`A Supabase confirmation link has been sent to ${cleanEmail}. Please check your email inbox to activate your account!`);
     }
   };
 
@@ -640,6 +665,20 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin, onGoToConf
                 {authMode === 'register' && 'Fill in your details to get started'}
                 {authMode === 'forgot_password' && 'Enter your email to receive a recovery link'}
               </p>
+              
+              {/* Supabase Connection Status Indicator */}
+              <div className="mt-2.5 flex justify-center">
+                {isSupabaseConfigured ? (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[11px] font-medium rounded-full">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                    <span>Supabase Auth Connected</span>
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-500/10 border border-amber-500/30 text-amber-300 text-[11px] font-medium rounded-full">
+                    <span>⚠️ Supabase Keys Missing (`VITE_SUPABASE_URL`)</span>
+                  </span>
+                )}
+              </div>
             </div>
 
             {/* Global Verification Feedback or Auth Notice Banner */}
@@ -741,14 +780,25 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin, onGoToConf
 
                 {/* Primary Card Actions */}
                 <div className="space-y-3 pt-1">
+                  {/* Primary Instant Confirm Button */}
+                  <button
+                    type="button"
+                    onClick={() => handleVerifyCodeSubmit()}
+                    disabled={isLoading}
+                    className="w-full py-3.5 px-6 bg-slate-950 hover:bg-slate-900 text-white font-bold text-sm rounded-2xl shadow-xl shadow-slate-950/20 transition duration-200 flex items-center justify-center gap-2 cursor-pointer active:scale-[0.99] disabled:opacity-50"
+                  >
+                    <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                    <span>{isLoading ? 'Activating account...' : 'Confirm & Activate Account Now'}</span>
+                  </button>
+
                   {/* Resend Confirmation Email Button */}
                   <button
                     type="button"
                     onClick={() => handleResendVerification(unverifiedAccount.email)}
                     disabled={isLoading}
-                    className="w-full py-3.5 px-6 bg-slate-950 hover:bg-slate-900 text-white font-bold text-sm rounded-2xl shadow-xl shadow-slate-950/20 transition duration-200 flex items-center justify-center gap-2 cursor-pointer active:scale-[0.99] disabled:opacity-50"
+                    className="w-full py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs rounded-xl transition cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
                   >
-                    <Mail className="w-4 h-4 text-emerald-400" />
+                    <Mail className="w-3.5 h-3.5 text-slate-600" />
                     <span>{isLoading ? 'Resending email...' : 'Resend Confirmation Email'}</span>
                   </button>
                 </div>

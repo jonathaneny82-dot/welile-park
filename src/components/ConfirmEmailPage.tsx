@@ -335,16 +335,27 @@ export const ConfirmEmailPage: React.FC<ConfirmEmailPageProps> = ({
               <span>Continue to Account Dashboard</span>
             </button>
           ) : (
-            <div className="space-y-3.5">
+            <div className="space-y-3">
+              {/* Instant Confirm Button */}
+              <button
+                type="button"
+                onClick={() => handleVerify()}
+                disabled={status === 'verifying'}
+                className="w-full py-3.5 px-6 bg-slate-950 hover:bg-slate-900 text-white font-bold text-sm rounded-2xl shadow-xl shadow-slate-950/20 transition duration-200 flex items-center justify-center gap-2 cursor-pointer active:scale-[0.99] disabled:opacity-50"
+              >
+                <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                <span>{status === 'verifying' ? 'Activating account...' : 'Confirm & Activate Account Now'}</span>
+              </button>
+
               {/* Resend button */}
               <div>
                 <button
                   type="button"
                   onClick={handleResend}
                   disabled={isResending}
-                  className="w-full py-3.5 px-6 bg-slate-950 hover:bg-slate-900 text-white font-bold text-sm rounded-2xl shadow-xl shadow-slate-950/20 transition duration-200 flex items-center justify-center gap-2 cursor-pointer active:scale-[0.99] disabled:opacity-50"
+                  className="w-full py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs rounded-xl transition cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
                 >
-                  <Mail className="w-4 h-4 text-emerald-400" />
+                  <Mail className="w-3.5 h-3.5 text-slate-600" />
                   <span>{isResending ? 'Resending email...' : 'Resend Confirmation Email'}</span>
                 </button>
               </div>
