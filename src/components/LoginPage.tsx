@@ -226,12 +226,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin, onGoToConf
   };
 
   // Verification pending state
-  const [unverifiedAccount, setUnverifiedAccount] = useState<{ email: string; name: string; token?: string; code?: string } | null>(null);
   const [verificationFeedback, setVerificationFeedback] = useState<string | null>(null);
-  const [verificationCodeInput, setVerificationCodeInput] = useState<string>('');
-  const [isEditingEmail, setIsEditingEmail] = useState<boolean>(false);
-  const [newEmailInput, setNewEmailInput] = useState<string>('');
-  const [showCodeInput, setShowCodeInput] = useState<boolean>(false);
 
   // Check for verification token or code in URL query parameter on load
   useEffect(() => {
@@ -248,7 +243,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin, onGoToConf
         .then((res) => res.json())
         .then((data) => {
           if (data.success) {
-            setVerificationFeedback('✅ Email verified successfully! You can now sign in.');
+            setVerificationFeedback('✅ Email confirmed successfully! You can now sign in to your account.');
             if (data.user) {
               setEmail(data.user.email);
             }
@@ -257,105 +252,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin, onGoToConf
         .catch(() => {});
     }
   }, []);
-
-  const handleResendVerification = async (targetEmail: string) => {
-    setIsLoading(true);
-    setVerificationFeedback(null);
-    const freshToken = `vtoken-${Math.random().toString(36).substring(2, 9)}-${Date.now()}`;
-    const freshCode = Math.floor(100000 + Math.random() * 900000).toString();
-
-    try {
-      const res = await fetch('/api/resend-verification', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: targetEmail }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (data.success) {
-        const activeCode = data.code || freshCode;
-        setVerificationFeedback(`A fresh confirmation email has been dispatched to ${targetEmail}.`);
-        if (unverifiedAccount) {
-          setUnverifiedAccount({ ...unverifiedAccount, token: data.token || freshToken, code: activeCode });
-        }
-      } else {
-        setVerificationFeedback(`A confirmation email has been dispatched to ${targetEmail}.`);
-        if (unverifiedAccount) {
-          setUnverifiedAccount({ ...unverifiedAccount, token: freshToken, code: freshCode });
-        }
-      }
-    } catch {
-      setVerificationFeedback(`A confirmation email has been dispatched to ${targetEmail}.`);
-      if (unverifiedAccount) {
-        setUnverifiedAccount({ ...unverifiedAccount, token: freshToken, code: freshCode });
-      }
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleVerifyCodeSubmit = async (customCode?: string) => {
-    const codeToSubmit = (customCode || verificationCodeInput || unverifiedAccount?.code || '').trim();
-    const targetEmail = unverifiedAccount?.email;
-
-    if (!codeToSubmit && !unverifiedAccount?.token) {
-      setVerificationFeedback('⚠️ Please enter the 6-digit verification code sent to your email.');
-      return;
-    }
-
-    setIsLoading(true);
-    let verifiedUser: User | null = null;
-
-    try {
-      const res = await fetch('/api/verify-email', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: targetEmail,
-          code: codeToSubmit,
-          token: unverifiedAccount?.token,
-        }),
-      });
-
-      const data = await res.json().catch(() => ({}));
-      if (data.success && data.user) {
-        verifiedUser = data.user;
-      } else if (data.error) {
-        setVerificationFeedback(`⚠️ ${data.error}`);
-        setIsLoading(false);
-        return;
-      }
-    } catch {}
-
-    if (!verifiedUser && targetEmail) {
-      const matched = users.find((u) => u.email.toLowerCase() === targetEmail.toLowerCase());
-      if (matched) {
-        verifiedUser = { ...matched, isVerified: true };
-      } else {
-        verifiedUser = {
-          id: `usr-${Date.now()}`,
-          name: targetEmail.split('@')[0],
-          email: targetEmail,
-          phone: '+256 700 000000',
-          role: UserRole.CUSTOMER,
-          createdAt: new Date().toISOString(),
-          isAuthorizedStaff: false,
-          authorizationStatus: 'Customer',
-          isVerified: true,
-        };
-      }
-    }
-
-    if (verifiedUser) {
-      setVerificationFeedback('✅ Email sign up confirmed with Supabase! Signing into account...');
-      setUnverifiedAccount(null);
-      setAuthNotice(null);
-      setVerificationCodeInput('');
-      setIsLoading(false);
-      onLogin(verifiedUser);
-    } else {
-      setIsLoading(false);
-    }
-  };
 
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -410,14 +306,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin, onGoToConf
 
       if (data.isUnverified || (data.user && data.user.isVerified === false)) {
         setIsLoading(false);
-        const code = data.code || data.user?.verificationCode || Math.floor(100000 + Math.random() * 900000).toString();
-        setUnverifiedAccount({
-          email: data.email || data.user?.email || inputVal,
-          name: data.user?.name || inputVal.split('@')[0],
-          token: data.token || data.user?.verificationToken,
-          code,
-        });
-        setAuthNotice('⚠️ Email Not Verified: Please check your inbox for the Supabase confirmation email or enter your verification code.');
+        setAuthNotice('⚠️ Email Not Verified: Please check your inbox and click the Supabase confirmation link inside to activate your account before signing in.');
         return;
       }
 
@@ -517,13 +406,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin, onGoToConf
 
       if (data.isUnverified || data.user) {
         setIsLoading(false);
-        setUnverifiedAccount({
-          email: data.user?.email || cleanEmail,
-          name: data.user?.name || cleanName,
-          token: data.token || data.user?.verificationToken,
-          code: generatedCode,
-        });
-        setVerificationFeedback(`A Supabase confirmation link has been sent to ${cleanEmail}. Please check your email inbox to activate your account!`);
+        setEmail(cleanEmail);
+        setPassword('');
+        setAuthMode('login');
+        setVerificationFeedback(`Account created successfully! A Supabase confirmation email has been dispatched to ${cleanEmail}. Please check your email inbox and click the confirmation link inside to activate your account.`);
         return;
       } else if (data.error) {
         setAuthNotice(data.error);
@@ -533,14 +419,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin, onGoToConf
     } catch {
       // Local fallback for registration
       setIsLoading(false);
-      const fallbackCode = Math.floor(100000 + Math.random() * 900000).toString();
-      setUnverifiedAccount({
-        email: cleanEmail || `user_${Date.now()}@ugpark.com`,
-        name: cleanName,
-        token: `vtoken-${Date.now()}`,
-        code: fallbackCode,
-      });
-      setVerificationFeedback(`A Supabase confirmation link has been sent to ${cleanEmail}. Please check your email inbox to activate your account!`);
+      setEmail(cleanEmail);
+      setPassword('');
+      setAuthMode('login');
+      setVerificationFeedback(`Account created! A confirmation link has been sent to ${cleanEmail}. Please check your email inbox to activate your account.`);
     }
   };
 
@@ -705,158 +587,22 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin, onGoToConf
             </div>
 
             {/* Global Verification Feedback or Auth Notice Banner */}
-            {verificationFeedback && !unverifiedAccount && (
+            {verificationFeedback && (
               <div className="p-3.5 bg-emerald-500/15 border border-emerald-500/40 rounded-2xl text-xs text-emerald-200 font-medium flex items-center gap-2.5">
                 <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
                 <span>{verificationFeedback}</span>
               </div>
             )}
 
-            {authNotice && !unverifiedAccount && (
+            {authNotice && (
               <div className="p-3.5 bg-rose-500/15 border border-rose-500/40 rounded-2xl text-xs text-rose-200 font-medium flex items-start gap-2.5">
                 <Lock className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
                 <span>{authNotice}</span>
               </div>
             )}
 
-            {/* MANDATORY EMAIL VERIFICATION PROMPT CARD - SUPABASE SIGN UP CONFIRMATION */}
-            {unverifiedAccount && (
-              <div className="p-7 sm:p-9 bg-white border border-slate-100 rounded-[32px] space-y-6 text-center animate-in fade-in zoom-in-95 duration-200 shadow-2xl text-slate-900 relative overflow-hidden">
-                
-                {/* Header Icon */}
-                <div className="relative w-16 h-16 mx-auto">
-                  <div className="w-16 h-16 bg-slate-950 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-slate-950/15">
-                    <Mail className="w-8 h-8 text-white stroke-[1.75]" />
-                  </div>
-                  <div className="absolute -top-1.5 -right-1.5 text-emerald-400 animate-pulse">
-                    <Sparkles className="w-6 h-6 fill-emerald-300 text-emerald-500 stroke-[1.5]" />
-                  </div>
-                </div>
-
-                {/* Title & Email Chip */}
-                <div className="space-y-2">
-                  <h3 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">Check your email</h3>
-                  <div className="inline-block px-3.5 py-1.5 rounded-full bg-slate-100 text-slate-800 text-xs font-bold font-mono border border-slate-200">
-                    {unverifiedAccount.email}
-                  </div>
-                </div>
-
-                {/* Clear Guidance */}
-                <p className="text-xs sm:text-sm text-slate-600 leading-relaxed font-normal max-w-sm mx-auto">
-                  A Supabase confirmation link has been sent to your email address. Click below to confirm sign up with Supabase or check your inbox.
-                </p>
-
-                {/* Change Email Option */}
-                <div>
-                  {!isEditingEmail ? (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setNewEmailInput(unverifiedAccount.email);
-                        setIsEditingEmail(true);
-                      }}
-                      className="text-xs font-semibold text-emerald-700 hover:text-emerald-800 transition cursor-pointer hover:underline"
-                    >
-                      Wrong email address? <span className="underline">Change email</span>
-                    </button>
-                  ) : (
-                    <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl space-y-2 text-left animate-in fade-in duration-200">
-                      <label className="block text-3xs font-bold uppercase tracking-wider text-slate-500">
-                        Update Email Address:
-                      </label>
-                      <div className="flex gap-2">
-                        <input
-                          type="email"
-                          value={newEmailInput}
-                          onChange={(e) => setNewEmailInput(e.target.value)}
-                          placeholder="enter new email"
-                          className="w-full px-3 py-1.5 rounded-xl bg-white border border-slate-300 text-xs text-slate-900 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (newEmailInput.trim()) {
-                              const updatedEmail = newEmailInput.trim();
-                              setUnverifiedAccount({
-                                ...unverifiedAccount,
-                                email: updatedEmail,
-                              });
-                              handleResendVerification(updatedEmail);
-                            }
-                            setIsEditingEmail(false);
-                          }}
-                          className="px-3 py-1.5 bg-slate-950 text-white font-bold text-xs rounded-xl hover:bg-slate-800 transition cursor-pointer"
-                        >
-                          Save & Resend
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Feedback Toast */}
-                {verificationFeedback && (
-                  <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-2xl text-xs text-emerald-800 font-medium text-center">
-                    {verificationFeedback}
-                  </div>
-                )}
-
-                {/* Primary Card Actions */}
-                <div className="space-y-3 pt-1">
-                  {/* Primary Instant Confirm Button */}
-                  <button
-                    type="button"
-                    onClick={() => handleVerifyCodeSubmit()}
-                    disabled={isLoading}
-                    className="w-full py-3.5 px-6 bg-slate-950 hover:bg-slate-900 text-white font-bold text-sm rounded-2xl shadow-xl shadow-slate-950/20 transition duration-200 flex items-center justify-center gap-2 cursor-pointer active:scale-[0.99] disabled:opacity-50"
-                  >
-                    <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                    <span>{isLoading ? 'Activating account...' : 'Confirm & Activate Account Now'}</span>
-                  </button>
-
-                  {/* Resend Confirmation Email Button */}
-                  <button
-                    type="button"
-                    onClick={() => handleResendVerification(unverifiedAccount.email)}
-                    disabled={isLoading}
-                    className="w-full py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs rounded-xl transition cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
-                  >
-                    <Mail className="w-3.5 h-3.5 text-slate-600" />
-                    <span>{isLoading ? 'Resending email...' : 'Resend Confirmation Email'}</span>
-                  </button>
-                </div>
-
-                {/* Footer Back link */}
-                <div className="pt-3 border-t border-slate-100 flex justify-between items-center text-xs">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setUnverifiedAccount(null);
-                      setAuthNotice(null);
-                      setVerificationFeedback(null);
-                      setAuthMode('login');
-                    }}
-                    className="text-slate-500 font-medium hover:text-slate-900 transition cursor-pointer"
-                  >
-                    ← Back to Log In
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (onGoToConfirmEmail) onGoToConfirmEmail();
-                    }}
-                    className="text-slate-600 font-bold hover:text-slate-900 underline transition cursor-pointer flex items-center gap-1"
-                  >
-                    <span>Confirm Page</span>
-                    <ExternalLink className="w-3 h-3 text-slate-400" />
-                  </button>
-                </div>
-
-              </div>
-            )}
-
             {/* FORM VIEW 1: SIGN IN */}
-            {authMode === 'login' && !unverifiedAccount && (
+            {authMode === 'login' && (
               <form onSubmit={handleLoginSubmit} className="space-y-4">
                 
                 {/* Unified Staff Identity Selector (Technician, Parking Attendant, Service Manager) */}
@@ -1004,7 +750,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin, onGoToConf
             )}
 
             {/* FORM VIEW 2: CREATE ACCOUNT */}
-            {authMode === 'register' && !unverifiedAccount && (
+            {authMode === 'register' && (
               <form onSubmit={handleRegisterSubmit} className="space-y-3.5">
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-300 block">Full Name</label>

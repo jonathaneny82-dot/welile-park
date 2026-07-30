@@ -1195,9 +1195,11 @@ app.post('/api/register', async (req, res) => {
       }
 
       if (signUpRes.error) {
-        const errMsg = signUpRes.error.message || (signUpRes.error as any).error_description || String(signUpRes.error);
-        console.warn('❌ Supabase Auth signUp error:', errMsg);
-        supabaseNotice = errMsg !== '{}' ? errMsg : 'Supabase Auth returned an unhandled error response.';
+        const errObj = signUpRes.error as any;
+        const errMsg = errObj.message || errObj.error_description || errObj.msg || errObj.name || (typeof errObj === 'string' ? errObj : 'Supabase Auth Notice');
+        const cleanMsg = (errMsg && errMsg !== '{}' && errMsg !== '[object Object]') ? errMsg : 'Supabase Auth Registration Notice';
+        console.warn('⚠️ Supabase Auth signUp notice:', cleanMsg);
+        supabaseNotice = cleanMsg;
 
         // If user already registered in Supabase Auth, try resend confirmation email
         if (errMsg.toLowerCase().includes('already registered')) {
@@ -1245,8 +1247,6 @@ app.post('/api/register', async (req, res) => {
       supabaseNotice = supabaseNotice ? `${supabaseNotice} | DB Notice: ${dbRes.error}` : `Supabase DB Notice: ${dbRes.error}`;
     }
 
-    await sendVerificationEmail(existingUser.email, existingUser.name, code, token);
-
     return res.status(200).json({
       success: true,
       isUnverified: true,
@@ -1255,8 +1255,8 @@ app.post('/api/register', async (req, res) => {
       token: existingUser.verificationToken,
       code: existingUser.verificationCode,
       supabaseNotice: supabaseNotice,
-      confirmUrl: `${confirmRedirectUrl}?email=${encodeURIComponent(cleanEmail)}&code=${code}`,
-      message: `Account registration refreshed! Supabase confirmation email triggered for ${cleanEmail}. Check your email inbox.`,
+      confirmUrl: `${confirmRedirectUrl}?email=${encodeURIComponent(cleanEmail)}`,
+      message: `Account registration refreshed! Supabase has dispatched a confirmation email to ${cleanEmail}. Check your email inbox.`,
     });
   }
 
@@ -1282,9 +1282,6 @@ app.post('/api/register', async (req, res) => {
     supabaseNotice = supabaseNotice ? `${supabaseNotice} | DB Notice: ${dbRes.error}` : `Supabase DB Notice: ${dbRes.error}`;
   }
 
-  // Dispatch email notification
-  await sendVerificationEmail(newUser.email, newUser.name, code, token);
-
   res.json({
     success: true,
     isUnverified: true,
@@ -1292,8 +1289,8 @@ app.post('/api/register', async (req, res) => {
     token: newUser.verificationToken,
     code: newUser.verificationCode,
     supabaseNotice: supabaseNotice,
-    confirmUrl: `${confirmRedirectUrl}?email=${encodeURIComponent(cleanEmail)}&code=${code}`,
-    message: `Sign up complete! Supabase confirmation email sent to ${cleanEmail}. Check your inbox or enter the code on the Confirm Email page.`,
+    confirmUrl: `${confirmRedirectUrl}?email=${encodeURIComponent(cleanEmail)}`,
+    message: `Sign up complete! Supabase confirmation email sent to ${cleanEmail}. Please check your email inbox and click the confirmation link inside.`,
   });
 
 });
@@ -1305,7 +1302,7 @@ app.post('/api/resend-verification', async (req, res) => {
 
   const user = users.find((u) => u.email.toLowerCase() === cleanEmail);
   if (!user) {
-    return res.status(444).json({ error: 'No account found with that email address.' });
+    return res.status(404).json({ error: 'No account found with that email address.' });
   }
 
   if (user.isVerified) {
@@ -1318,23 +1315,48 @@ app.post('/api/resend-verification', async (req, res) => {
   user.verificationCode = code;
   user.verificationSentAt = new Date().toISOString();
 
-  if (supabase) {
+  await saveUserToSupabase(user);
+
+  // Trigger Supabase Auth native email resend
+  let sbNotice: string | null = null;
+  const sb = getSupabaseServerClient();
+  if (sb) {
     try {
-      await supabase.from('users').upsert(mapUserToDb(user));
-    } catch (e) {
-      console.error('Supabase update verification token error:', e);
+      const confirmRedirectUrl = process.env.VITE_APP_URL ? `${process.env.VITE_APP_URL}/confirm-email` : 'http://localhost:3000/confirm-email';
+      let resendRes = await sb.auth.resend({
+        type: 'signup',
+        email: cleanEmail,
+        options: { emailRedirectTo: confirmRedirectUrl },
+      });
+      if (resendRes.error) {
+        if (resendRes.error.message?.toLowerCase().includes('redirect')) {
+          resendRes = await sb.auth.resend({
+            type: 'signup',
+            email: cleanEmail,
+          });
+        }
+      }
+      if (resendRes.error) {
+        sbNotice = resendRes.error.message;
+        console.warn('Supabase server-side resend notice:', resendRes.error.message);
+      } else {
+        console.log(`✅ Triggered Supabase Auth confirmation email resend for ${cleanEmail}`);
+      }
+    } catch (sbResendErr: any) {
+      sbNotice = sbResendErr?.message || String(sbResendErr);
+      console.warn('Supabase server-side resend exception:', sbNotice);
     }
   }
-
-  // Dispatch email with Nodemailer or logger
-  await sendVerificationEmail(user.email, user.name, code, token);
 
   res.json({
     success: true,
     token: user.verificationToken,
     code: user.verificationCode,
     email: user.email,
-    message: `A new 6-digit verification code (${code}) has been sent to ${user.email}. Enter the code below to sign in.`,
+    supabaseNotice: sbNotice,
+    message: sbNotice
+      ? `Supabase Status: ${sbNotice}`
+      : `A Supabase confirmation email has been dispatched to ${user.email}. Please check your email inbox (including Spam/Junk folder) and click the confirmation link.`,
   });
 });
 
@@ -1391,13 +1413,7 @@ app.put('/api/users/:id/verify', async (req, res) => {
   user.verifiedAt = new Date().toISOString();
   user.verificationToken = undefined;
 
-  if (supabase) {
-    try {
-      await supabase.from('users').upsert(mapUserToDb(user));
-    } catch (e) {
-      console.error('Supabase manager verify user error:', e);
-    }
-  }
+  await saveUserToSupabase(user);
 
   res.json({
     success: true,

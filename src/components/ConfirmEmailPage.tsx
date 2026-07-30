@@ -166,17 +166,21 @@ export const ConfirmEmailPage: React.FC<ConfirmEmailPageProps> = ({
     setIsResending(true);
     setResendFeedback(null);
 
+    let clientResendNotice: string | null = null;
     if (isSupabaseConfigured) {
       try {
-        await supabase.auth.resend({
+        const { error: sbErr } = await supabase.auth.resend({
           type: 'signup',
           email,
           options: {
             emailRedirectTo: `${window.location.origin}/confirm-email`,
           },
         });
-      } catch (e) {
-        console.warn('Supabase auth resend error:', e);
+        if (sbErr) {
+          clientResendNotice = sbErr.message;
+        }
+      } catch (e: any) {
+        console.warn('Supabase auth resend exception:', e);
       }
     }
 
@@ -188,13 +192,14 @@ export const ConfirmEmailPage: React.FC<ConfirmEmailPageProps> = ({
       });
       const data = await res.json().catch(() => ({}));
       if (data.success) {
-        setResendFeedback(data.message || `Confirmation email re-dispatched to ${email}. Check your inbox.`);
+        const finalMsg = data.supabaseNotice || clientResendNotice || data.message || `Confirmation email dispatched to ${email}. Check your inbox or Spam/Junk folder.`;
+        setResendFeedback(finalMsg);
         if (data.code) setCode(data.code);
       } else {
-        setResendFeedback(`Confirmation email re-dispatched to ${email}.`);
+        setResendFeedback(clientResendNotice || data.error || `Confirmation email re-dispatched to ${email}.`);
       }
     } catch {
-      setResendFeedback(`Confirmation email re-dispatched to ${email}.`);
+      setResendFeedback(clientResendNotice || `Confirmation email re-dispatched to ${email}. Please check your inbox.`);
     } finally {
       setIsResending(false);
     }
@@ -336,16 +341,19 @@ export const ConfirmEmailPage: React.FC<ConfirmEmailPageProps> = ({
             </button>
           ) : (
             <div className="space-y-3">
-              {/* Instant Confirm Button */}
+              {/* Direct Open Mail App Button */}
               <button
                 type="button"
-                onClick={() => handleVerify()}
-                disabled={status === 'verifying'}
-                className="w-full py-3.5 px-6 bg-slate-950 hover:bg-slate-900 text-white font-bold text-sm rounded-2xl shadow-xl shadow-slate-950/20 transition duration-200 flex items-center justify-center gap-2 cursor-pointer active:scale-[0.99] disabled:opacity-50"
+                onClick={openMailApp}
+                className="w-full py-3 px-5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm rounded-2xl shadow-lg shadow-emerald-600/20 transition duration-200 flex items-center justify-center gap-2 cursor-pointer active:scale-[0.99]"
               >
-                <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                <span>{status === 'verifying' ? 'Activating account...' : 'Confirm & Activate Account Now'}</span>
+                <ExternalLink className="w-4 h-4 text-emerald-100" />
+                <span>Check Inbox for Supabase Email</span>
               </button>
+
+              <div className="p-3 bg-slate-50 border border-slate-200/80 rounded-2xl text-xs text-slate-600 text-center leading-relaxed">
+                <span className="font-medium text-slate-700">Account activation required:</span> Please open your email inbox and click the confirmation link inside the Supabase email to activate your account.
+              </div>
 
               {/* Resend button */}
               <div>
@@ -356,8 +364,21 @@ export const ConfirmEmailPage: React.FC<ConfirmEmailPageProps> = ({
                   className="w-full py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs rounded-xl transition cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
                 >
                   <Mail className="w-3.5 h-3.5 text-slate-600" />
-                  <span>{isResending ? 'Resending email...' : 'Resend Confirmation Email'}</span>
+                  <span>{isResending ? 'Resending email...' : 'Resend Supabase Confirmation Email'}</span>
                 </button>
+              </div>
+
+              {/* Troubleshooting Tips */}
+              <div className="pt-2 text-left bg-amber-50/70 border border-amber-200/80 rounded-2xl p-3.5 text-[11px] text-amber-900 space-y-1.5 leading-relaxed">
+                <div className="font-bold text-amber-950 flex items-center gap-1.5 text-xs">
+                  <Sparkles className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                  <span>Why haven't I received the confirmation email?</span>
+                </div>
+                <ul className="list-disc list-inside space-y-1 text-amber-900/90 font-normal">
+                  <li><strong>Check Spam/Junk folder:</strong> Supabase automated emails frequently land in Spam.</li>
+                  <li><strong>Verify recipient email:</strong> Confirm <span className="font-mono bg-amber-100/80 px-1 py-0.5 rounded text-amber-950 font-bold">{email}</span> is exact.</li>
+                  <li><strong>Supabase Rate Limits:</strong> Supabase default SMTP limits testing to 4 emails/hour across a project. For high-volume delivery, configure custom SMTP (e.g., Resend) in your Supabase Dashboard (Auth &rarr; SMTP Settings).</li>
+                </ul>
               </div>
             </div>
           )}
