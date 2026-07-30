@@ -364,28 +364,34 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin, onGoToConf
     setVerificationFeedback(null);
 
     const targetRole = getRoleForPortal(selectedPortal);
-    const meta = getPortalMeta(selectedPortal);
-    const inputVal = (email.trim() || meta.defaultUserEmail).toLowerCase();
+    const inputVal = email.trim().toLowerCase();
 
-    // 1. Search local users list first
-    let matchedUser = findUserMatch(inputVal, users);
-
-    if (matchedUser) {
-      if (matchedUser.isVerified === false) {
-        setIsLoading(false);
-        const code = matchedUser.verificationCode || Math.floor(100000 + Math.random() * 900000).toString();
-        setUnverifiedAccount({
-          email: matchedUser.email,
-          name: matchedUser.name,
-          token: matchedUser.verificationToken || `vtoken-${matchedUser.id}`,
-          code,
-        });
-        setAuthNotice('⚠️ Email Not Verified: Enter the 6-digit verification code sent to your email to sign in.');
-        return;
-      }
-      onLogin(matchedUser);
+    if (!inputVal) {
+      setAuthNotice('Please enter your email address.');
       setIsLoading(false);
       return;
+    }
+
+    // 1. Client-side Supabase Auth signIn if configured
+    if (checkIsSupabaseConfigured() && password) {
+      try {
+        const sbClient = getClientSupabase();
+        const { data: sbSignInData, error: sbSignInErr } = await sbClient.auth.signInWithPassword({
+          email: inputVal,
+          password: password,
+        });
+
+        if (sbSignInErr) {
+          console.warn('Client Supabase Auth signIn notice:', sbSignInErr.message);
+          if (sbSignInErr.message.toLowerCase().includes('email not confirmed')) {
+            setAuthNotice('⚠️ Your email address is not verified yet. Please check your inbox for the Supabase confirmation email.');
+          }
+        } else if (sbSignInData?.user) {
+          console.log('✅ Client-side Supabase Auth signIn successful for', inputVal);
+        }
+      } catch (err: any) {
+        console.warn('Client-side Supabase signIn exception:', err?.message || err);
+      }
     }
 
     // 2. Call backend login API
@@ -395,11 +401,13 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin, onGoToConf
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           email: inputVal,
+          password: password,
           role: targetRole,
         }),
       });
 
       const data = await res.json();
+
       if (data.isUnverified || (data.user && data.user.isVerified === false)) {
         setIsLoading(false);
         const code = data.code || data.user?.verificationCode || Math.floor(100000 + Math.random() * 900000).toString();
@@ -409,7 +417,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin, onGoToConf
           token: data.token || data.user?.verificationToken,
           code,
         });
-        setAuthNotice('⚠️ Email Not Verified: Enter the 6-digit verification code sent to your email to sign in.');
+        setAuthNotice('⚠️ Email Not Verified: Please check your inbox for the Supabase confirmation email or enter your verification code.');
         return;
       }
 
@@ -422,26 +430,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin, onGoToConf
         setIsLoading(false);
         return;
       }
-    } catch {
-      // Fallback
+    } catch (err: any) {
+      setAuthNotice(`Connection error: ${err?.message || 'Unable to connect to authentication server.'}`);
+      setIsLoading(false);
     }
-
-    // 3. Fallback User Creation (unverified by default for non-seed fallback users)
-    const isStaff = targetRole !== UserRole.CUSTOMER;
-    const fallbackUser: User = {
-      id: `usr-${Date.now()}`,
-      name: inputVal.includes('@') ? inputVal.split('@')[0].replace(/\./g, ' ') : meta.defaultUserName,
-      email: inputVal.includes('@') ? inputVal : meta.defaultUserEmail,
-      phone: '+256 700 000000',
-      role: targetRole,
-      createdAt: new Date().toISOString(),
-      isAuthorizedStaff: isStaff,
-      authorizationStatus: isStaff ? 'Authorized' : 'Customer',
-      isVerified: true, // fallback demo user verified
-    };
-
-    onLogin(fallbackUser);
-    setIsLoading(false);
   };
 
   const handleRegisterSubmit = async (e: React.FormEvent) => {
@@ -468,13 +460,20 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin, onGoToConf
           },
         });
         if (sbError) {
-          console.warn('Client-side Supabase signUp notice:', sbError.message);
-          setAuthNotice(`Supabase Auth Notice: ${sbError.message}`);
+          const errText = typeof sbError === 'string' ? sbError : sbError?.message || JSON.stringify(sbError);
+          console.warn('Client-side Supabase signUp notice:', errText);
+          if (errText && errText !== '{}') {
+            setAuthNotice(`Supabase Auth Notice: ${errText}`);
+          }
         } else if (sbData?.user) {
           console.log('✅ Client-side Supabase Auth signUp successful for', cleanEmail);
+          if (sbData.user.identities && sbData.user.identities.length === 0) {
+            setAuthNotice('Supabase Auth Notice: An account with this email already exists in Supabase.');
+          }
         }
-      } catch (err) {
-        console.warn('Client-side Supabase signUp notice:', err);
+      } catch (err: any) {
+        const errText = err?.message || String(err);
+        console.warn('Client-side Supabase signUp notice:', errText);
       }
     }
 
@@ -493,7 +492,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin, onGoToConf
       const data = await res.json();
       const generatedCode = data.code || data.user?.verificationCode || Math.floor(100000 + Math.random() * 900000).toString();
 
-      if (data.supabaseNotice) {
+      if (data.supabaseNotice && typeof data.supabaseNotice === 'string' && data.supabaseNotice !== '{}') {
         setAuthNotice(`Supabase Auth Note: ${data.supabaseNotice}`);
       }
 

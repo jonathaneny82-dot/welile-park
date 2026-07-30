@@ -1145,11 +1145,12 @@ app.post('/api/register', async (req, res) => {
       }
 
       if (signUpRes.error) {
-        console.warn('❌ Supabase Auth signUp error:', signUpRes.error.message);
-        supabaseNotice = signUpRes.error.message;
+        const errMsg = signUpRes.error.message || (signUpRes.error as any).error_description || String(signUpRes.error);
+        console.warn('❌ Supabase Auth signUp error:', errMsg);
+        supabaseNotice = errMsg !== '{}' ? errMsg : 'Supabase Auth returned an unhandled error response.';
 
         // If user already registered in Supabase Auth, try resend confirmation email
-        if (signUpRes.error.message?.toLowerCase().includes('already registered')) {
+        if (errMsg.toLowerCase().includes('already registered')) {
           try {
             await sb.auth.resend({
               type: 'signup',
@@ -1367,64 +1368,74 @@ app.put('/api/users/:id/verify', async (req, res) => {
   });
 });
 
-// Login & Authentication Endpoint (Enforces Mandatory Email Verification)
+// Login & Authentication Endpoint (100% Supabase Integrated)
 app.post('/api/login', async (req, res) => {
-  const { email, name, role, phone } = req.body;
-  const reqEmail = (email || '').trim();
+  const { email, name, role, password } = req.body;
+  const reqEmail = (email || '').trim().toLowerCase();
   const reqName = (name || '').trim();
-  const rawInput = (reqEmail || reqName || '').trim();
-  const lowerInput = rawInput.toLowerCase();
-  const requestedRole = (role as UserRole) || UserRole.CUSTOMER;
+  const rawInput = (reqEmail || reqName || '').trim().toLowerCase();
 
-  // Search ONLY by exact match (email, name, id, or email username prefix)
-  let user = lowerInput
-    ? users.find((u) => 
-        u.email.toLowerCase() === lowerInput || 
-        u.name.toLowerCase() === lowerInput || 
-        u.id.toLowerCase() === lowerInput ||
-        (reqEmail && u.email.toLowerCase() === reqEmail.toLowerCase()) ||
-        (reqName && u.name.toLowerCase() === reqName.toLowerCase()) ||
-        u.email.toLowerCase().split('@')[0] === lowerInput
-      )
-    : undefined;
+  if (!rawInput) {
+    return res.status(400).json({ error: 'Please enter your email address to sign in.' });
+  }
 
-  let warning: string | undefined = undefined;
+  const sb = getSupabaseServerClient();
+  let user: User | undefined = users.find(
+    (u) => u.email.toLowerCase() === rawInput || u.name.toLowerCase() === rawInput || u.id === rawInput
+  );
 
+  // If user not in memory, query Supabase database directly
+  if (!user && sb) {
+    try {
+      const { data: dbUser, error: dbErr } = await sb
+        .from('users')
+        .select('*')
+        .or(`email.ilike.${rawInput},name.ilike.${rawInput}`)
+        .maybeSingle();
+
+      if (dbUser && !dbErr) {
+        user = mapUserFromDb(dbUser);
+        const idx = users.findIndex((u) => u.id === user!.id || u.email.toLowerCase() === user!.email.toLowerCase());
+        if (idx >= 0) users[idx] = user;
+        else users.push(user);
+      }
+    } catch (err) {
+      console.warn('Supabase DB user lookup notice:', err);
+    }
+  }
+
+  // If user is still not found in Supabase or memory, do NOT create fake demo accounts! Return clear error.
   if (!user) {
-    if (!lowerInput) {
-      user = users.find((u) => u.role === requestedRole) || users[0];
-    } else {
-      const isStaff = requestedRole !== UserRole.CUSTOMER;
-      const finalName = reqName || rawInput || `${requestedRole} User`;
-      const finalEmail = reqEmail.includes('@') 
-        ? reqEmail.toLowerCase() 
-        : rawInput.includes('@')
-          ? rawInput.toLowerCase()
-          : `${rawInput.toLowerCase().replace(/\s+/g, '.')}@ugpark.com`;
+    return res.status(400).json({
+      error: `No registered account found for "${reqEmail || rawInput}". Please click "Create Account" below to register with Supabase.`,
+    });
+  }
 
-      const token = `vtoken-${Math.random().toString(36).substring(2)}${Date.now()}`;
-      user = {
-        id: `usr-${Date.now()}`,
-        name: finalName,
-        email: finalEmail,
-        phone: phone || '+256 700 000000',
-        role: requestedRole,
-        createdAt: new Date().toISOString(),
-        isAuthorizedStaff: isStaff,
-        authorizationStatus: isStaff ? 'Authorized' : 'Customer',
-        isVerified: false,
-        verificationToken: token,
-        verificationSentAt: new Date().toISOString(),
-      };
-      users.push(user);
+  // If password is provided and Supabase Auth client is active, attempt Supabase Auth sign-in
+  if (sb && password && user.email) {
+    try {
+      const { data: authResult, error: authErr } = await sb.auth.signInWithPassword({
+        email: user.email,
+        password,
+      });
 
-      if (supabase) {
-        try {
-          await supabase.from('users').upsert(mapUserToDb(user));
-        } catch (e) {
-          console.error('Supabase save user error:', e);
+      if (authErr) {
+        console.warn(`Supabase Auth signIn notice for ${user.email}:`, authErr.message);
+        if (authErr.message?.toLowerCase().includes('email not confirmed')) {
+          user.isVerified = false;
+        } else if (authErr.message?.toLowerCase().includes('invalid login credentials')) {
+          return res.status(401).json({ error: 'Invalid email address or password. Please check your credentials and try again.' });
+        }
+      } else if (authResult?.user) {
+        console.log(`✅ Supabase Auth authenticated user ${user.email}`);
+        if (authResult.user.email_confirmed_at || authResult.user.confirmed_at) {
+          user.isVerified = true;
+          user.verifiedAt = authResult.user.email_confirmed_at || authResult.user.confirmed_at;
+          await sb.from('users').update({ is_verified: true, verified_at: user.verifiedAt }).eq('email', user.email);
         }
       }
+    } catch (e: any) {
+      console.warn('Supabase Auth signIn exception:', e?.message || e);
     }
   }
 
@@ -1433,14 +1444,14 @@ app.post('/api/login', async (req, res) => {
     return res.status(200).json({
       success: false,
       isUnverified: true,
-      error: 'Your email address is not verified. Users must verify their email before they can sign in or access any part of the application.',
+      error: 'Your email address is not verified yet. Please check your email inbox for the Supabase confirmation link or enter your verification code.',
       user,
       email: user.email,
       token: user.verificationToken || `vtoken-${user.id}`,
     });
   }
 
-  res.json({ success: true, user, warning, token: `jwt-token-${user.id}` });
+  res.json({ success: true, user, token: `jwt-token-${user.id}` });
 });
 
 // Admin Authorization Endpoints
