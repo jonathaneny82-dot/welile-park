@@ -1065,6 +1065,19 @@ Format as a polite, clean, structured layout. Avoid deep developer jargon.`;
                                   Job ID: {activeJob.id.toUpperCase()} • {veh?.make} {veh?.model}
                                 </h3>
                                 <p className="text-3xs text-gray-500 font-mono mt-0.5">REG: {veh?.registrationNumber} • Mileage: {veh?.mileage?.toLocaleString() || 0} km</p>
+                                
+                                {/* Real-time Reserved Parking Location for Technician */}
+                                {(() => {
+                                  const vehRes = reservations.find((r) => r.vehicleId === activeJob.vehicleId);
+                                  const vehSpace = vehRes ? parkingSpaces.find((p) => p.id === vehRes.parkingId) : parkingSpaces.find((p) => p.assignedVehicleId === activeJob.vehicleId);
+                                  const locationText = vehSpace ? `Floor ${vehSpace.floor}, Slot ${vehSpace.spaceNumber}` : activeJob.assignedDeliveryBay || 'Floor 1, Slot A04';
+                                  return (
+                                    <div className="mt-1.5 inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 border border-emerald-300 rounded-lg text-3xs font-mono font-black text-emerald-900">
+                                      <MapPin className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                      <span>Vehicle Parking Location: {locationText}</span>
+                                    </div>
+                                  );
+                                })()}
                               </div>
                               <span className="text-2xs font-bold bg-orange-100 text-orange-800 px-2.5 py-0.5 rounded font-mono">
                                 STATUS: {activeJob.status}
@@ -2288,7 +2301,7 @@ Format as a polite, clean, structured layout. Avoid deep developer jargon.`;
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2.5 sm:gap-3">
                   {users
                     .filter((u) => u.role === UserRole.SERVICE_TECHNICIAN)
                     .map((tech) => {
@@ -2299,7 +2312,7 @@ Format as a polite, clean, structured layout. Avoid deep developer jargon.`;
                       return (
                         <div
                           key={tech.id}
-                          className="bg-slate-50/60 border border-slate-200 rounded-2xl p-4 shadow-2xs space-y-3 relative overflow-hidden"
+                          className="bg-slate-50/60 border border-slate-200 rounded-xl p-3 shadow-2xs space-y-2 relative overflow-hidden"
                         >
                           <div className="flex items-start justify-between gap-3">
                             <div className="flex items-center gap-2.5">
@@ -2368,13 +2381,13 @@ Format as a polite, clean, structured layout. Avoid deep developer jargon.`;
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2.5 sm:gap-3">
                   {users
                     .filter((u) => u.role === UserRole.PARKING_ATTENDANT)
                     .map((attendant) => (
                       <div
                         key={attendant.id}
-                        className="bg-indigo-50/40 border border-indigo-100 rounded-2xl p-4 shadow-2xs space-y-3"
+                        className="bg-indigo-50/40 border border-indigo-100 rounded-xl p-3 shadow-2xs space-y-2"
                       >
                         <div className="flex items-start justify-between gap-3">
                           <div className="flex items-center gap-2.5">
@@ -2566,9 +2579,9 @@ Format as a polite, clean, structured layout. Avoid deep developer jargon.`;
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5">
                 {inventory.map((item) => (
-                  <div key={item.id} className="border border-slate-200 rounded-xl p-4 space-y-2 bg-slate-50/50">
+                  <div key={item.id} className="border border-slate-200 rounded-xl p-3 space-y-1.5 bg-slate-50/50">
                     <div className="flex items-start justify-between">
                       <div>
                         <h4 className="font-bold text-xs text-slate-900">{item.partName}</h4>

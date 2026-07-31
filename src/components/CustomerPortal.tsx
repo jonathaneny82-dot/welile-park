@@ -780,8 +780,15 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
   };
 
   // Intuitive Navigation Tabs & View Mode State
-  const [activeTab, setActiveTab] = useState<'overview' | 'parking' | 'services' | 'charging' | 'payments' | 'rewards'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'parking' | 'services' | 'charging' | 'history' | 'payments' | 'rewards'>('overview');
   const [viewMode, setViewMode] = useState<'tabs' | 'single'>('tabs');
+  const [historyCategoryTab, setHistoryCategoryTab] = useState<'all' | 'services' | 'maintenance' | 'payments'>('all');
+  const [historySearchQuery, setHistorySearchQuery] = useState<string>('');
+
+  // Multi-service selection catalog state (users can select/unselect freely before submitting booking)
+  const [selectedServiceCatalog, setSelectedServiceCatalog] = useState<string[]>([
+    'Full Oil & Filter Change',
+  ]);
 
   // Scroll to top immediately whenever activeTab changes
   useEffect(() => {
@@ -1166,68 +1173,100 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
   return (
     <div className="max-w-2xl mx-auto space-y-6 font-sans text-slate-900 pb-12">
       
-      {/* ================= HEADER / GREETING SECTION ================= */}
-      <div className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
-            Hello {userName} <span className="inline-block animate-bounce">👋</span>
-          </h1>
-          <p className="text-xs text-slate-500 font-medium mt-1">
-            Welcome back to your UG PARK Mobility & Service Dashboard
-          </p>
-        </div>
-
-        {/* Vehicle Identity Card */}
-        <div className="bg-slate-50 border border-slate-200/90 rounded-xl p-3.5 flex items-center gap-3.5 sm:min-w-[220px]">
-          <div className="w-10 h-10 rounded-xl bg-slate-900 text-white flex items-center justify-center text-xl shadow-xs">
-            🚗
+      {/* ================= HEADER / GREETING SECTION (OVERVIEW ONLY) ================= */}
+      {activeTab === 'overview' && (
+        <div className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
+              Hello {userName} <span className="inline-block animate-bounce">👋</span>
+            </h1>
+            <p className="text-xs text-slate-500 font-medium mt-1">
+              Welcome back to your UG PARK Mobility & Service Dashboard
+            </p>
           </div>
-          <div className="flex-1 min-w-0">
-            <span className="text-[10px] uppercase font-bold text-slate-400 font-mono tracking-wider block">
-              Your Vehicle
-            </span>
-            {activeVehicle ? (
-              <>
-                <div className="font-extrabold text-sm text-slate-900 truncate">
-                  {activeVehicle.make} {activeVehicle.model}
-                </div>
-                <div className="text-xs font-mono font-bold text-emerald-600">
-                  {activeVehicle.registrationNumber}
-                </div>
-              </>
+
+          {/* Vehicle Identity Card */}
+          <div className="bg-slate-50 border border-slate-200/90 rounded-xl p-3.5 flex items-center gap-3.5 sm:min-w-[220px]">
+            <div className="w-10 h-10 rounded-xl bg-slate-900 text-white flex items-center justify-center text-xl shadow-xs">
+              🚗
+            </div>
+            <div className="flex-1 min-w-0">
+              <span className="text-[10px] uppercase font-bold text-slate-400 font-mono tracking-wider block">
+                Your Vehicle
+              </span>
+              {activeVehicle ? (
+                <>
+                  <div className="font-extrabold text-sm text-slate-900 truncate">
+                    {activeVehicle.make} {activeVehicle.model}
+                  </div>
+                  <div className="text-xs font-mono font-bold text-emerald-600">
+                    {activeVehicle.registrationNumber}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="font-extrabold text-xs text-slate-700 truncate">
+                    No Vehicle Registered
+                  </div>
+                  <div className="text-[10px] font-medium text-slate-400">
+                    Click to add your car
+                  </div>
+                </>
+              )}
+            </div>
+            {myVehicles.length > 0 ? (
+              <button
+                onClick={() => setShowVehicleManager(!showVehicleManager)}
+                title="Manage Vehicles"
+                className="text-2xs font-bold text-emerald-600 hover:text-emerald-700 underline cursor-pointer flex items-center gap-1"
+              >
+                <span>Manage Cars</span>
+              </button>
             ) : (
-              <>
-                <div className="font-extrabold text-xs text-slate-700 truncate">
-                  No Vehicle Registered
-                </div>
-                <div className="text-[10px] font-medium text-slate-400">
-                  Click to add your car
-                </div>
-              </>
+              <button
+                onClick={() => {
+                  setShowVehicleManager(true);
+                  setShowAddVehicleForm(true);
+                }}
+                title="Add Vehicle"
+                className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-2xs font-bold transition cursor-pointer flex items-center gap-1 shrink-0"
+              >
+                <Plus className="w-3 h-3" /> Add Car
+              </button>
             )}
           </div>
-          {myVehicles.length > 0 ? (
-            <button
-              onClick={() => setShowVehicleManager(!showVehicleManager)}
-              title="Manage Vehicles"
-              className="text-2xs font-bold text-emerald-600 hover:text-emerald-700 underline cursor-pointer flex items-center gap-1"
-            >
-              <span>Manage Cars</span>
-            </button>
-          ) : (
-            <button
-              onClick={() => {
-                setShowVehicleManager(true);
-                setShowAddVehicleForm(true);
-              }}
-              title="Add Vehicle"
-              className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-2xs font-bold transition cursor-pointer flex items-center gap-1 shrink-0"
-            >
-              <Plus className="w-3 h-3" /> Add Car
-            </button>
-          )}
         </div>
-      </div>
+      )}
+
+      {/* ================= STANDALONE PAGE HEADER (NON-OVERVIEW TABS) ================= */}
+      {activeTab !== 'overview' && (
+        <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-fadeIn">
+          <button
+            onClick={() => {
+              setActiveTab('overview');
+              window.scrollTo({ top: 0, behavior: 'instant' });
+            }}
+            className="inline-flex items-center gap-2 px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-extrabold transition cursor-pointer shadow-sm border border-slate-700 self-start sm:self-auto shrink-0"
+          >
+            <ArrowLeft className="w-4 h-4 text-emerald-400" />
+            <span>← Back to Dashboard Overview</span>
+          </button>
+
+          <div className="sm:text-right">
+            <h2 className="text-sm sm:text-base font-black text-slate-900 capitalize flex items-center sm:justify-end gap-1.5">
+              {activeTab === 'parking' && '🅿️ Parking & Yard Management'}
+              {activeTab === 'services' && '🔧 Vehicle Service Selection'}
+              {activeTab === 'charging' && '⚡ EV Supercharger Network'}
+              {activeTab === 'history' && '📜 Customer Service History'}
+              {activeTab === 'payments' && '💳 Invoice & Settlement'}
+              {activeTab === 'rewards' && '🎁 Customer Loyalty Rewards'}
+            </h2>
+            <p className="text-3xs text-slate-500 font-mono mt-0.5">
+              Standalone Full Screen View • Active Car: {activeVehicle?.registrationNumber || 'UG PARK'}
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Top Service Selection & Unselection Notification Banner */}
       {serviceNotificationBanner && (
@@ -1374,23 +1413,127 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
         </div>
       )}
 
-      {/* ================= ENLARGED COLORFUL TOP ACTION & STATUS CARDS (OVERVIEW ONLY) ================= */}
+      {/* Top Main Navigation Tabs Bar */}
+      <div className="bg-slate-900 p-2 rounded-2xl shadow-md border border-slate-800 flex items-center gap-1.5 overflow-x-auto text-xs font-bold scrollbar-none">
+        <button
+          onClick={() => {
+            setActiveTab('overview');
+            window.scrollTo({ top: 0, behavior: 'instant' });
+          }}
+          className={`px-3.5 py-2 rounded-xl transition cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
+            activeTab === 'overview'
+              ? 'bg-emerald-500 text-slate-950 font-black shadow-sm'
+              : 'text-slate-300 hover:text-white hover:bg-slate-800'
+          }`}
+        >
+          <span>📊 Overview</span>
+        </button>
+
+        <button
+          onClick={() => {
+            setActiveTab('parking');
+            window.scrollTo({ top: 0, behavior: 'instant' });
+          }}
+          className={`px-3.5 py-2 rounded-xl transition cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
+            activeTab === 'parking'
+              ? 'bg-emerald-500 text-slate-950 font-black shadow-sm'
+              : 'text-slate-300 hover:text-white hover:bg-slate-800'
+          }`}
+        >
+          <span>🅿️ Parking & Yards</span>
+        </button>
+
+        <button
+          onClick={() => {
+            setActiveTab('services');
+            window.scrollTo({ top: 0, behavior: 'instant' });
+          }}
+          className={`px-3.5 py-2 rounded-xl transition cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
+            activeTab === 'services'
+              ? 'bg-emerald-500 text-slate-950 font-black shadow-sm'
+              : 'text-slate-300 hover:text-white hover:bg-slate-800'
+          }`}
+        >
+          <span>🔧 Service Selection</span>
+        </button>
+
+        <button
+          onClick={() => {
+            setActiveTab('charging');
+            window.scrollTo({ top: 0, behavior: 'instant' });
+          }}
+          className={`px-3.5 py-2 rounded-xl transition cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
+            activeTab === 'charging'
+              ? 'bg-emerald-500 text-slate-950 font-black shadow-sm'
+              : 'text-slate-300 hover:text-white hover:bg-slate-800'
+          }`}
+        >
+          <span>⚡ EV Charging</span>
+        </button>
+
+        <button
+          onClick={() => {
+            setActiveTab('history');
+            window.scrollTo({ top: 0, behavior: 'instant' });
+          }}
+          className={`px-3.5 py-2 rounded-xl transition cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
+            activeTab === 'history'
+              ? 'bg-emerald-500 text-slate-950 font-black shadow-sm ring-2 ring-emerald-400'
+              : 'text-emerald-400 hover:text-emerald-300 hover:bg-slate-800 font-black'
+          }`}
+        >
+          <span>📜 Customer History</span>
+          <span className="px-1.5 py-0.2 rounded bg-emerald-400/20 text-emerald-300 text-3xs font-mono font-bold uppercase">
+            History Only
+          </span>
+        </button>
+
+        <button
+          onClick={() => {
+            setActiveTab('payments');
+            window.scrollTo({ top: 0, behavior: 'instant' });
+          }}
+          className={`px-3.5 py-2 rounded-xl transition cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
+            activeTab === 'payments'
+              ? 'bg-emerald-500 text-slate-950 font-black shadow-sm'
+              : 'text-slate-300 hover:text-white hover:bg-slate-800'
+          }`}
+        >
+          <span>💳 Payments</span>
+        </button>
+
+        <button
+          onClick={() => {
+            setActiveTab('rewards');
+            window.scrollTo({ top: 0, behavior: 'instant' });
+          }}
+          className={`px-3.5 py-2 rounded-xl transition cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
+            activeTab === 'rewards'
+              ? 'bg-emerald-500 text-slate-950 font-black shadow-sm'
+              : 'text-slate-300 hover:text-white hover:bg-slate-800'
+          }`}
+        >
+          <span>🎁 Rewards</span>
+        </button>
+      </div>
+
+      {/* ================= COMPACT COLORFUL TOP ACTION & STATUS CARDS (OVERVIEW ONLY) ================= */}
       {activeTab === 'overview' && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3">
           {/* 1. PARKING CARD */}
-          <div className="bg-gradient-to-br from-emerald-600 via-teal-700 to-emerald-900 text-white rounded-2xl p-5 shadow-lg border border-emerald-400/40 flex flex-col justify-between space-y-4 hover:shadow-xl transition">
+          <div className="bg-gradient-to-br from-emerald-600 via-teal-700 to-emerald-900 text-white rounded-xl p-3 sm:p-3.5 shadow-md border border-emerald-400/40 flex flex-col justify-between space-y-2.5 hover:shadow-lg transition">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-mono font-bold uppercase tracking-wider text-emerald-200 flex items-center gap-1.5">
+              <span className="text-3xs font-mono font-bold uppercase tracking-wider text-emerald-200 flex items-center gap-1">
                 🅿️ Parking Spot
               </span>
-              <MapPin className="w-5 h-5 text-emerald-200" />
+              <MapPin className="w-4 h-4 text-emerald-200" />
             </div>
             <div>
-              <span className="font-extrabold text-2xl md:text-3xl tracking-tight block">
+              <span className="font-extrabold text-base md:text-lg tracking-tight block">
                 Floor {currentFloor}, Slot {currentSlot}
               </span>
-              <span className="text-xs font-medium text-emerald-100/90 block mt-1">
-                {hoursRemaining} hour(s) active time remaining
+              <span className="text-3xs font-medium text-emerald-100/90 block mt-0.5">
+                {hoursRemaining}h active time remaining
               </span>
             </div>
             <button
@@ -1399,26 +1542,26 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
                 setParkingStep('yard');
                 window.scrollTo({ top: 0, behavior: 'instant' });
               }}
-              className="w-full py-2.5 px-3 bg-white text-emerald-900 hover:bg-emerald-50 text-xs font-extrabold rounded-xl transition cursor-pointer shadow-sm flex items-center justify-center gap-2"
+              className="w-full py-1.5 px-2 bg-white text-emerald-900 hover:bg-emerald-50 text-xs font-extrabold rounded-lg transition cursor-pointer shadow-xs flex items-center justify-center gap-1.5"
             >
-              <span>Manage Parking / Find Available Slot</span>
-              <ArrowRight className="w-4 h-4" />
+              <span>Manage Parking</span>
+              <ArrowRight className="w-3.5 h-3.5" />
             </button>
           </div>
 
           {/* 2. SERVICE CARD */}
-          <div className="bg-gradient-to-br from-blue-600 via-indigo-700 to-blue-900 text-white rounded-2xl p-5 shadow-lg border border-blue-400/40 flex flex-col justify-between space-y-4 hover:shadow-xl transition">
+          <div className="bg-gradient-to-br from-blue-600 via-indigo-700 to-blue-900 text-white rounded-xl p-3 sm:p-3.5 shadow-md border border-blue-400/40 flex flex-col justify-between space-y-2.5 hover:shadow-lg transition">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-mono font-bold uppercase tracking-wider text-blue-200 flex items-center gap-1.5">
+              <span className="text-3xs font-mono font-bold uppercase tracking-wider text-blue-200 flex items-center gap-1">
                 🔧 Vehicle Service
               </span>
-              <Wrench className="w-5 h-5 text-blue-200" />
+              <Wrench className="w-4 h-4 text-blue-200" />
             </div>
             <div>
-              <span className="font-extrabold text-xl md:text-2xl tracking-tight block truncate">
+              <span className="font-extrabold text-base md:text-lg tracking-tight block truncate">
                 {serviceName || 'Maintenance Care'}
               </span>
-              <span className="text-xs font-medium text-blue-100/90 block mt-1">
+              <span className="text-3xs font-medium text-blue-100/90 block mt-0.5">
                 Status: {serviceProgress}% Completed
               </span>
             </div>
@@ -1428,27 +1571,27 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
                 setServiceStep('workshop');
                 window.scrollTo({ top: 0, behavior: 'instant' });
               }}
-              className="w-full py-2.5 px-3 bg-white text-blue-900 hover:bg-blue-50 text-xs font-extrabold rounded-xl transition cursor-pointer shadow-sm flex items-center justify-center gap-2"
+              className="w-full py-1.5 px-2 bg-white text-blue-900 hover:bg-blue-50 text-xs font-extrabold rounded-lg transition cursor-pointer shadow-xs flex items-center justify-center gap-1.5"
             >
-              <span>Request / Track Service</span>
-              <ArrowRight className="w-4 h-4" />
+              <span>Track Service</span>
+              <ArrowRight className="w-3.5 h-3.5" />
             </button>
           </div>
 
           {/* 3. EV CHARGING CARD */}
-          <div className="bg-gradient-to-br from-amber-500 via-amber-600 to-orange-800 text-white rounded-2xl p-5 shadow-lg border border-amber-300/40 flex flex-col justify-between space-y-4 hover:shadow-xl transition">
+          <div className="bg-gradient-to-br from-amber-500 via-amber-600 to-orange-800 text-white rounded-xl p-3 sm:p-3.5 shadow-md border border-amber-300/40 flex flex-col justify-between space-y-2.5 hover:shadow-lg transition">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-mono font-bold uppercase tracking-wider text-amber-100 flex items-center gap-1.5">
+              <span className="text-3xs font-mono font-bold uppercase tracking-wider text-amber-100 flex items-center gap-1">
                 ⚡ EV Charging
               </span>
-              <Zap className="w-5 h-5 text-amber-200" />
+              <Zap className="w-4 h-4 text-amber-200" />
             </div>
             <div>
-              <span className="font-extrabold text-xl md:text-2xl tracking-tight block">
+              <span className="font-extrabold text-base md:text-lg tracking-tight block">
                 {NEARBY_EV_STATIONS.length} Supercharger Hubs
               </span>
-              <span className="text-xs font-medium text-amber-100/90 block mt-1">
-                Fast DC (150 kW) & AC Plugs
+              <span className="text-3xs font-medium text-amber-100/90 block mt-0.5">
+                Fast DC & AC Plugs
               </span>
             </div>
             <button
@@ -1457,27 +1600,27 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
                 setEvStep('station');
                 window.scrollTo({ top: 0, behavior: 'instant' });
               }}
-              className="w-full py-2.5 px-3 bg-slate-900 text-amber-300 hover:bg-slate-800 text-xs font-extrabold rounded-xl transition cursor-pointer shadow-sm flex items-center justify-center gap-2"
+              className="w-full py-1.5 px-2 bg-slate-900 text-amber-300 hover:bg-slate-800 text-xs font-extrabold rounded-lg transition cursor-pointer shadow-xs flex items-center justify-center gap-1.5"
             >
-              <span>Charge EV / View Stations</span>
-              <ArrowRight className="w-4 h-4" />
+              <span>View Stations</span>
+              <ArrowRight className="w-3.5 h-3.5" />
             </button>
           </div>
 
           {/* 4. INVOICE & PAYMENTS CARD */}
-          <div className="bg-gradient-to-br from-purple-700 via-purple-900 to-slate-950 text-white rounded-2xl p-5 shadow-lg border border-purple-400/40 flex flex-col justify-between space-y-4 hover:shadow-xl transition">
+          <div className="bg-gradient-to-br from-purple-700 via-purple-900 to-slate-950 text-white rounded-xl p-3 sm:p-3.5 shadow-md border border-purple-400/40 flex flex-col justify-between space-y-2.5 hover:shadow-lg transition">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-mono font-bold uppercase tracking-wider text-purple-200 flex items-center gap-1.5">
+              <span className="text-3xs font-mono font-bold uppercase tracking-wider text-purple-200 flex items-center gap-1">
                 💳 Invoice & Payments
               </span>
-              <CreditCard className="w-5 h-5 text-purple-200" />
+              <CreditCard className="w-4 h-4 text-purple-200" />
             </div>
             <div>
-              <span className="font-extrabold text-xl md:text-2xl font-mono tracking-tight block">
+              <span className="font-extrabold text-base md:text-lg font-mono tracking-tight block">
                 UGX {isPaymentSettled ? '0' : totalCalculatedCostUGX.toLocaleString()}
               </span>
-              <span className="text-xs font-medium text-purple-200/90 block mt-1">
-                {isPaymentSettled ? 'Invoice Settled ✓' : 'Itemized Vehicle Invoice'}
+              <span className="text-3xs font-medium text-purple-200/90 block mt-0.5">
+                {isPaymentSettled ? 'Invoice Settled ✓' : 'Itemized Invoice'}
               </span>
             </div>
             <button
@@ -1486,35 +1629,16 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
                 setPayStep('bills');
                 window.scrollTo({ top: 0, behavior: 'instant' });
               }}
-              className="w-full py-2.5 px-3 bg-white text-purple-950 hover:bg-purple-50 text-xs font-extrabold rounded-xl transition cursor-pointer shadow-sm flex items-center justify-center gap-2"
+              className="w-full py-1.5 px-2 bg-white text-purple-950 hover:bg-purple-50 text-xs font-extrabold rounded-lg transition cursor-pointer shadow-xs flex items-center justify-center gap-1.5"
             >
-              <span>{isPaymentSettled ? 'View Paid Receipt' : 'Pay Invoice Now'}</span>
-              <ArrowRight className="w-4 h-4" />
+              <span>{isPaymentSettled ? 'Paid Receipt' : 'Pay Invoice'}</span>
+              <ArrowRight className="w-3.5 h-3.5" />
             </button>
           </div>
         </div>
       )}
 
       {/* ================= MAIN CONTENT RENDER AREA ================= */}
-
-      {/* BACK BUTTON FOR DEDICATED PAGES */}
-      {activeTab !== 'overview' && (
-        <div className="flex items-center justify-between pb-1">
-          <button
-            onClick={() => {
-              setActiveTab('overview');
-              window.scrollTo({ top: 0, behavior: 'instant' });
-            }}
-            className="inline-flex items-center gap-2 px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-extrabold transition cursor-pointer shadow-sm border border-slate-700"
-          >
-            <ArrowLeft className="w-4 h-4 text-emerald-400" />
-            <span>← Back to Dashboard</span>
-          </button>
-          <span className="text-2xs font-mono font-bold uppercase tracking-wider text-slate-500 bg-slate-100 px-2.5 py-1 rounded-lg">
-            {activeTab} view
-          </span>
-        </div>
-      )}
 
       {/* --- TAB 1: OVERVIEW TAB --- */}
       {activeTab === 'overview' && (
@@ -2056,92 +2180,387 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
             )}
           </div>
 
-          {/* Clean 3-Option Vehicle Service Request Grid */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between border-b border-slate-200/80 pb-2">
-              <h2 className="text-xs font-mono font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
-                <Wrench className="w-4 h-4 text-emerald-600" />
-                SELECT A NEW SERVICE FOR YOUR VEHICLE
-              </h2>
-              <span className="text-3xs text-slate-400 font-mono">Single-selection enforced</span>
+          {/* Flexible Multi-Service Selection Matrix */}
+          <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+              <div>
+                <h2 className="text-xs font-mono font-bold uppercase tracking-wider text-slate-900 flex items-center gap-1.5">
+                  <Wrench className="w-4 h-4 text-emerald-600" />
+                  AVAILABLE VEHICLE SERVICES SELECTION MATRIX
+                </h2>
+                <p className="text-3xs text-slate-500 mt-0.5">
+                  Select or unselect any available services freely before confirming your booking.
+                </p>
+              </div>
+              <span className="px-2.5 py-1 rounded-full text-3xs font-bold font-mono bg-emerald-100 text-emerald-800 uppercase self-start sm:self-center">
+                {selectedServiceCatalog.length} Services Selected
+              </span>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {/* Option 1: Doorstep Home Car Servicing */}
-              <div className="bg-gradient-to-b from-slate-900 to-indigo-950 text-white rounded-2xl p-4 border border-indigo-500/30 flex flex-col justify-between space-y-3 shadow-md">
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-3xs font-mono font-bold uppercase text-indigo-300 bg-indigo-500/20 px-2 py-0.5 rounded">
-                      🏠 Doorstep Mobile Service
-                    </span>
-                    <span className="text-3xs text-indigo-200 font-mono">UGX 150k</span>
+            {/* Service Checkbox Matrix Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5">
+              {[
+                { id: 'oil', title: 'Full Oil & Filter Change', cost: 80000, desc: 'Synthetic motor oil replacement, oil filter & engine inspection', icon: '🛢️' },
+                { id: 'wash', title: 'Eco Foam Car Wash & Vacuum', cost: 25000, desc: 'Snow foam wash, interior vacuum, tire shine & window polish', icon: '🫧' },
+                { id: 'brakes', title: 'Brake Pad & Rotor Inspection', cost: 120000, desc: 'Brake fluid check, pad replacement & rotor resurfacing', icon: '🛑' },
+                { id: 'engine', title: 'Engine Diagnostics & Scan', cost: 50000, desc: 'OBD-II computer fault scan, sensor test & error code clear', icon: '💻' },
+                { id: 'wheels', title: 'Wheel Alignment & Balancing', cost: 45000, desc: '4-wheel laser alignment, tire balancing & pressure check', icon: '🛞' },
+                { id: 'ac', title: 'AC Servicing & Gas Refill', cost: 90000, desc: 'Cabin filter clean, refrigerant gas refill & compressor check', icon: '❄️' },
+                { id: 'battery', title: 'Battery Health Test & Service', cost: 35000, desc: 'Voltage testing, terminal cleaning & alternator check', icon: '🔋' },
+                { id: 'suspension', title: 'Suspension & Shock Service', cost: 110000, desc: 'Bushings check, strut inspection & noise diagnostics', icon: '🔩' },
+                { id: 'mobile', title: 'Doorstep Mobile Home Service', cost: 150000, desc: 'Certified technician dispatches to home or office location', icon: '🏠' },
+              ].map((srvItem) => {
+                const isChecked = selectedServiceCatalog.includes(srvItem.title);
+                return (
+                  <div
+                    key={srvItem.id}
+                    onClick={() => {
+                      if (isChecked) {
+                        setSelectedServiceCatalog((prev) => prev.filter((t) => t !== srvItem.title));
+                        setServiceNotificationBanner({
+                          type: 'info',
+                          message: `Unselected service "${srvItem.title}".`,
+                        });
+                      } else {
+                        setSelectedServiceCatalog((prev) => [...prev, srvItem.title]);
+                        setServiceNotificationBanner({
+                          type: 'success',
+                          message: `Selected service "${srvItem.title}"! (UGX ${srvItem.cost.toLocaleString()})`,
+                        });
+                      }
+                    }}
+                    className={`p-3.5 rounded-xl border transition cursor-pointer flex flex-col justify-between space-y-2.5 ${
+                      isChecked
+                        ? 'bg-emerald-50/80 border-emerald-500 shadow-sm ring-1 ring-emerald-400'
+                        : 'bg-slate-50 border-slate-200 hover:bg-slate-100 hover:border-slate-300'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xl">{srvItem.icon}</span>
+                        <div>
+                          <h3 className="text-xs font-extrabold text-slate-900">{srvItem.title}</h3>
+                          <span className="text-3xs font-mono font-bold text-emerald-700 block mt-0.5">
+                            UGX {srvItem.cost.toLocaleString()}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className={`w-5 h-5 rounded-md flex items-center justify-center shrink-0 text-white font-bold text-xs transition ${
+                        isChecked ? 'bg-emerald-600' : 'border border-slate-300 bg-white'
+                      }`}>
+                        {isChecked && '✓'}
+                      </div>
+                    </div>
+
+                    <p className="text-3xs text-slate-600 leading-relaxed">{srvItem.desc}</p>
+
+                    <div className="flex items-center justify-between pt-1 border-t border-slate-200/60 text-3xs font-bold">
+                      <span className={isChecked ? 'text-emerald-700' : 'text-slate-400'}>
+                        {isChecked ? 'Selected for Booking' : 'Click to Select'}
+                      </span>
+                      <span className="text-slate-500 underline">
+                        {isChecked ? 'Unselect' : 'Select'}
+                      </span>
+                    </div>
                   </div>
-                  <h3 className="text-xs font-black text-white">Home & Office Servicing</h3>
-                  <p className="text-3xs text-indigo-100/80 leading-relaxed">
-                    Certified technician comes directly to your home or office with full toolkit & oil.
-                  </p>
-                </div>
-                <button
-                  onClick={() => setShowHomeServiceModal(true)}
-                  className="w-full py-2.5 bg-indigo-500 hover:bg-indigo-400 text-slate-950 font-black text-xs rounded-xl shadow transition cursor-pointer flex items-center justify-center gap-1.5"
-                >
-                  <Wrench className="w-3.5 h-3.5 text-slate-950" />
-                  <span>Select Home Servicing</span>
-                </button>
+                );
+              })}
+            </div>
+
+            {/* Batch Submission Bar for Selected Services */}
+            <div className="bg-slate-900 text-white p-4 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-md">
+              <div>
+                <span className="text-3xs uppercase font-mono text-slate-400 block font-bold">Total Estimated Selected Services</span>
+                <span className="text-xl font-black font-mono text-emerald-400">
+                  UGX {
+                    [
+                      { title: 'Full Oil & Filter Change', cost: 80000 },
+                      { title: 'Eco Foam Car Wash & Vacuum', cost: 25000 },
+                      { title: 'Brake Pad & Rotor Inspection', cost: 120000 },
+                      { title: 'Engine Diagnostics & Scan', cost: 50000 },
+                      { title: 'Wheel Alignment & Balancing', cost: 45000 },
+                      { title: 'AC Servicing & Gas Refill', cost: 90000 },
+                      { title: 'Battery Health Test & Service', cost: 35000 },
+                      { title: 'Suspension & Shock Service', cost: 110000 },
+                      { title: 'Doorstep Mobile Home Service', cost: 150000 },
+                    ]
+                      .filter((s) => selectedServiceCatalog.includes(s.title))
+                      .reduce((acc, s) => acc + s.cost, 0)
+                      .toLocaleString()
+                  }
+                </span>
               </div>
 
-              {/* Option 2: Workshop Mechanical Repair */}
-              <div className="bg-gradient-to-b from-slate-900 to-slate-950 text-white rounded-2xl p-4 border border-emerald-500/30 flex flex-col justify-between space-y-3 shadow-md">
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-3xs font-mono font-bold uppercase text-emerald-300 bg-emerald-500/20 px-2 py-0.5 rounded">
-                      🔧 Workshop Mechanical
-                    </span>
-                    <span className="text-3xs text-emerald-300 font-mono">UGX 120k</span>
-                  </div>
-                  <h3 className="text-xs font-black text-white">Garage Mechanical Repairs</h3>
-                  <p className="text-3xs text-slate-300 leading-relaxed">
-                    Diagnose brake faults, engine noise, suspension & electrical issues at workshop.
-                  </p>
-                </div>
-                <button
-                  onClick={() => {
-                    setTargetVehForGarage(activeVehicle);
-                    setShowReqGarageModal(true);
-                  }}
-                  className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs rounded-xl shadow transition cursor-pointer flex items-center justify-center gap-1.5"
-                >
-                  <Wrench className="w-3.5 h-3.5" />
-                  <span>Request Mechanical Repair</span>
-                </button>
-              </div>
+              <button
+                disabled={selectedServiceCatalog.length === 0}
+                onClick={async () => {
+                  if (!activeVehicle) return;
+                  try {
+                    for (const sTitle of selectedServiceCatalog) {
+                      await fetch('/api/services', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          vehicleId: activeVehicle.id,
+                          customerId: userId,
+                          serviceType: sTitle,
+                          cost: sTitle.includes('Wash') ? 25000 : sTitle.includes('Oil') ? 80000 : 120000,
+                          bookingDate: new Date().toISOString(),
+                          diagnosticNotes: `Selected by customer via Service Selection Matrix: ${sTitle}`,
+                        }),
+                      });
+                    }
+                    onRefreshAll();
+                    setServiceNotificationBanner({
+                      type: 'success',
+                      message: `🎉 Successfully booked ${selectedServiceCatalog.length} selected service(s) for vehicle ${activeVehicle.registrationNumber}!`,
+                    });
+                  } catch (e) {
+                    console.error(e);
+                  }
+                }}
+                className={`py-2.5 px-4 font-black text-xs rounded-xl shadow transition cursor-pointer flex items-center justify-center gap-1.5 ${
+                  selectedServiceCatalog.length > 0
+                    ? 'bg-emerald-500 hover:bg-emerald-400 text-slate-950'
+                    : 'bg-slate-700 text-slate-400 cursor-not-allowed'
+                }`}
+              >
+                <CheckCircle2 className="w-4 h-4 text-slate-950" />
+                <span>Confirm Service Booking ({selectedServiceCatalog.length})</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
-              {/* Option 3: Eco Car Wash & Detailing */}
-              <div className="bg-gradient-to-b from-slate-900 to-cyan-950 text-white rounded-2xl p-4 border border-cyan-500/30 flex flex-col justify-between space-y-3 shadow-md">
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-3xs font-mono font-bold uppercase text-cyan-300 bg-cyan-500/20 px-2 py-0.5 rounded">
-                      🫧 Eco Foam Wash
-                    </span>
-                    <span className="text-3xs text-cyan-200 font-mono">UGX 25k</span>
-                  </div>
-                  <h3 className="text-xs font-black text-white">Car Wash & Detailing</h3>
-                  <p className="text-3xs text-cyan-100/80 leading-relaxed">
-                    Snow foam wash, interior vacuum, tire shine, engine degreasing while parked.
-                  </p>
+      {/* --- TAB 4: EV CHARGING TAB --- */}
+      {activeTab === 'charging' && (
+        <div className="space-y-6">
+          {/* NEARBY EV CHARGING STATIONS */}
+          <div className="bg-slate-900 text-white rounded-2xl p-5 shadow-xl space-y-4 border border-slate-800">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="px-2 py-0.5 bg-amber-500/20 text-amber-400 text-3xs font-mono font-bold uppercase rounded-md tracking-wider border border-amber-500/30">
+                    ⚡ EV Supercharger Network
+                  </span>
+                  <span className="text-3xs text-slate-400 font-mono">{NEARBY_EV_STATIONS.length} Stations Active</span>
                 </div>
-                <button
-                  onClick={() => {
-                    if (activeVehicle) setCarWashTargetVehicleId(activeVehicle.id);
-                    setShowCarWashModal(true);
-                  }}
-                  className="w-full py-2.5 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-black text-xs rounded-xl shadow transition cursor-pointer flex items-center justify-center gap-1.5"
-                >
-                  <Droplets className="w-3.5 h-3.5 text-slate-950" />
-                  <span>Request Car Wash</span>
-                </button>
+                <h2 className="text-lg font-black text-white mt-1 flex items-center gap-2">
+                  <Zap className="w-5 h-5 text-amber-400 animate-pulse" />
+                  Nearby EV Supercharger Plugs
+                </h2>
               </div>
             </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5">
+              {NEARBY_EV_STATIONS.map((station) => (
+                <div key={station.id} className="bg-slate-800 border border-slate-700 rounded-xl p-2.5 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-extrabold text-xs text-white">{station.name}</span>
+                    <span className="text-3xs font-mono font-bold px-2 py-0.5 bg-amber-400/20 text-amber-300 rounded">
+                      {station.distanceKm} km
+                    </span>
+                  </div>
+                  <p className="text-3xs text-slate-300 font-mono">{station.address}</p>
+                  <div className="flex items-center justify-between text-3xs font-mono pt-1 text-slate-400">
+                    <span>Plugs: {station.availableDcPlugs}/{station.fastDcPlugs} DC Fast free</span>
+                    <span className="text-emerald-400 font-bold">UGX {station.ratePerKwh}/kWh</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- TAB 5: DEDICATED CUSTOMER HISTORY TAB ONLY --- */}
+      {activeTab === 'history' && (
+        <div className="space-y-6 animate-fadeIn">
+          {/* CUSTOMER HISTORY HEADER */}
+          <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white rounded-2xl p-6 shadow-xl space-y-4 border border-indigo-500/30">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="px-2.5 py-0.5 bg-emerald-500/20 text-emerald-300 text-3xs font-mono font-bold uppercase rounded-md tracking-wider border border-emerald-500/40">
+                    📜 Exclusive Record Ledger
+                  </span>
+                  <span className="text-3xs text-slate-400 font-mono">Customer Account History Only</span>
+                </div>
+                <h2 className="text-xl font-black text-white mt-1 flex items-center gap-2">
+                  <Clock className="w-5 h-5 text-emerald-400" />
+                  Customer Vehicle Service & Payment History
+                </h2>
+                <p className="text-xs text-slate-300 mt-1">
+                  View complete vehicle service history, maintenance records, and payment receipts in one dedicated tab.
+                </p>
+              </div>
+
+              {activeVehicle && (
+                <div className="bg-slate-800/90 border border-slate-700 px-3.5 py-2 rounded-xl text-right shrink-0">
+                  <span className="text-[10px] font-mono uppercase text-slate-400 block font-bold">Active Vehicle Filter</span>
+                  <span className="text-xs font-black text-emerald-400 font-mono">{activeVehicle.make} {activeVehicle.model} ({activeVehicle.registrationNumber})</span>
+                </div>
+              )}
+            </div>
+
+            {/* Filter Tabs & Search Bar */}
+            <div className="space-y-3">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2">
+                {/* Sub-tabs */}
+                <div className="flex items-center gap-1 overflow-x-auto text-xs font-bold">
+                  {[
+                    { id: 'all', label: 'All Records' },
+                    { id: 'services', label: '🛠️ Service History' },
+                    { id: 'maintenance', label: '📋 Maintenance Logs' },
+                    { id: 'payments', label: '💳 Payment Receipts' },
+                  ].map((tab) => (
+                    <button
+                      key={tab.id}
+                      onClick={() => setHistoryCategoryTab(tab.id as any)}
+                      className={`px-3 py-1.5 rounded-xl transition cursor-pointer whitespace-nowrap ${
+                        historyCategoryTab === tab.id
+                          ? 'bg-emerald-500 text-slate-950 font-black shadow-xs'
+                          : 'bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white'
+                      }`}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Search Bar */}
+                <div className="relative w-full sm:w-64">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
+                  <input
+                    type="text"
+                    placeholder="Search history records..."
+                    value={historySearchQuery}
+                    onChange={(e) => setHistorySearchQuery(e.target.value)}
+                    className="w-full pl-8 pr-3 py-1.5 bg-slate-800 border border-slate-700 text-xs rounded-xl text-white placeholder-slate-400 font-medium focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* HISTORY RECORDS CONTENT GRID */}
+          <div className="space-y-4">
+            {/* 1. VEHICLE SERVICE HISTORY SECTION */}
+            {(historyCategoryTab === 'all' || historyCategoryTab === 'services') && (
+              <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm space-y-3">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                  <h3 className="text-xs font-mono font-bold uppercase tracking-wider text-slate-900 flex items-center gap-1.5">
+                    <Wrench className="w-4 h-4 text-emerald-600" />
+                    Vehicle Service History ({customerServices.length})
+                  </h3>
+                  <span className="text-3xs font-mono text-slate-400 font-bold">Consolidated Service Logs</span>
+                </div>
+
+                {customerServices.length === 0 ? (
+                  <div className="p-6 bg-slate-50 rounded-xl text-center text-xs text-slate-500 border border-slate-200/80">
+                    No service history recorded for this vehicle yet.
+                  </div>
+                ) : (
+                  <div className="space-y-2.5 max-h-[350px] overflow-y-auto pr-1">
+                    {customerServices
+                      .filter((s) => !historySearchQuery || s.serviceType.toLowerCase().includes(historySearchQuery.toLowerCase()) || (s.diagnosticNotes || '').toLowerCase().includes(historySearchQuery.toLowerCase()))
+                      .map((srv) => (
+                        <div key={srv.id} className="p-3.5 bg-slate-50 border border-slate-200/90 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-emerald-300 transition">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-extrabold text-xs text-slate-900">{srv.serviceType}</span>
+                              <span className="px-2 py-0.2 rounded-full text-3xs font-mono font-bold bg-emerald-100 text-emerald-800">
+                                {srv.status}
+                              </span>
+                            </div>
+                            <p className="text-3xs text-slate-500 font-mono">
+                              Date: {new Date(srv.bookingDate).toLocaleDateString()} • Vehicle: {activeVehicle?.registrationNumber || 'Car'}
+                            </p>
+                            {srv.diagnosticNotes && (
+                              <p className="text-3xs text-slate-700 italic">Notes: "{srv.diagnosticNotes}"</p>
+                            )}
+                          </div>
+                          <div className="text-right shrink-0">
+                            <span className="font-mono font-black text-slate-900 text-xs block">UGX {srv.cost.toLocaleString()}</span>
+                            <span className="text-3xs text-emerald-600 font-bold font-mono block">Verified Service</span>
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* 2. MAINTENANCE RECORDS SECTION */}
+            {(historyCategoryTab === 'all' || historyCategoryTab === 'maintenance') && (
+              <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm space-y-3">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                  <h3 className="text-xs font-mono font-bold uppercase tracking-wider text-slate-900 flex items-center gap-1.5">
+                    <CheckCircle2 className="w-4 h-4 text-indigo-600" />
+                    Vehicle Maintenance & Diagnostic Logs
+                  </h3>
+                  <span className="text-3xs font-mono text-slate-400 font-bold">Workshop & Technician Notes</span>
+                </div>
+
+                <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
+                  {[
+                    { title: 'Synthetic Engine Oil & Filter Service', date: '2026-06-15', status: 'Completed', tech: 'Sarah Nakato', notes: 'Replaced 4L Total Quartz 9000 synthetic oil. Next service due at 10,000 km.' },
+                    { title: 'Brake System Inspection & Pad Cleaning', date: '2026-05-10', status: 'Completed', tech: 'David Ochieng', notes: 'Front brake pads at 75% thickness. Rear drum brakes cleaned & adjusted.' },
+                    { title: 'OBD-II Full System Computer Diagnostics', date: '2026-04-02', status: 'Completed', tech: 'Sarah Nakato', notes: 'No active diagnostic trouble codes (DTC). Battery voltage at 12.6V optimal.' },
+                  ].map((maint, idx) => (
+                    <div key={idx} className="p-3 bg-indigo-50/50 border border-indigo-100 rounded-xl space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="font-extrabold text-xs text-indigo-950">{maint.title}</span>
+                        <span className="text-3xs font-mono font-bold px-2 py-0.5 bg-indigo-100 text-indigo-800 rounded">{maint.status}</span>
+                      </div>
+                      <p className="text-3xs text-slate-600 font-mono">Date: {maint.date} • Lead Technician: {maint.tech}</p>
+                      <p className="text-3xs text-indigo-900 font-medium">Log: "{maint.notes}"</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* 3. PAYMENT HISTORY SECTION */}
+            {(historyCategoryTab === 'all' || historyCategoryTab === 'payments') && (
+              <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm space-y-3">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                  <h3 className="text-xs font-mono font-bold uppercase tracking-wider text-slate-900 flex items-center gap-1.5">
+                    <CreditCard className="w-4 h-4 text-purple-600" />
+                    Payment Transactions & Paid Receipts
+                  </h3>
+                  <span className="text-3xs font-mono text-slate-400 font-bold">Official Financial Ledger</span>
+                </div>
+
+                <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
+                  {payments.length === 0 ? (
+                    <div className="p-4 bg-slate-50 rounded-xl text-center text-xs text-slate-500">
+                      No payment transactions settled yet. When you clear your service invoice, paid receipts will appear here.
+                    </div>
+                  ) : (
+                    payments.map((pay) => (
+                      <div key={pay.id} className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between text-xs">
+                        <div className="space-y-0.5">
+                          <div className="flex items-center gap-2">
+                            <span className="font-extrabold text-slate-900">Paid Receipt #{pay.id}</span>
+                            <span className="text-3xs font-mono px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-800 font-bold">
+                              {pay.paymentMethod}
+                            </span>
+                          </div>
+                          <p className="text-3xs text-slate-500 font-mono">TxRef: {pay.transactionId} • Date: {new Date(pay.timestamp).toLocaleDateString()}</p>
+                        </div>
+                        <div className="text-right">
+                          <span className="font-mono font-black text-slate-900 block">UGX {pay.amount.toLocaleString()}</span>
+                          <span className="text-3xs text-emerald-600 font-bold font-mono">Cleared ✓</span>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

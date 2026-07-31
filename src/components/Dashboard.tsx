@@ -285,7 +285,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       </header>
 
       {/* ================= MAIN DASHBOARD CONTENT WORKSPACE (FULL SCREEN WIDTH) ================= */}
-      <main className="flex-1 bg-white/90 backdrop-blur-md rounded-[24px] md:rounded-[28px] p-5 md:p-8 border border-white shadow-xl flex flex-col min-h-[700px] overflow-hidden">
+      <main className="flex-1 bg-white/90 backdrop-blur-md rounded-[20px] md:rounded-[24px] p-3.5 md:p-5 border border-white shadow-xl flex flex-col min-h-[700px] overflow-hidden">
         
         {/* Mac-style titlebar dots + layout icon */}
         <div className="flex items-center justify-between mb-4">

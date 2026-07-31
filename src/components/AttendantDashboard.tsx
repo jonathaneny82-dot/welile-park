@@ -582,43 +582,43 @@ export const AttendantDashboard: React.FC<AttendantDashboardProps> = ({
               </button>
             </div>
 
-            {/* THREE SMALL SUMMARY CARDS */}
-            <div className="grid grid-cols-3 gap-3">
+            {/* THREE COMPACT SUMMARY CARDS */}
+            <div className="grid grid-cols-3 gap-2.5">
               
               {/* Card 1: Available Spaces */}
               <div
                 onClick={() => navigateTo('yard')}
-                className="bg-[#FFFFFF] rounded-2xl p-4 border border-[#E2E8F0] shadow-xs text-center cursor-pointer hover:border-emerald-300 transition"
+                className="bg-[#FFFFFF] rounded-xl p-2.5 sm:p-3 border border-[#E2E8F0] shadow-2xs text-center cursor-pointer hover:border-emerald-300 transition"
               >
-                <div className="w-8 h-8 rounded-xl bg-emerald-50 text-[#10B981] flex items-center justify-center mx-auto mb-1.5">
-                  <ParkingSquare className="w-4 h-4" />
+                <div className="w-7 h-7 rounded-lg bg-emerald-50 text-[#10B981] flex items-center justify-center mx-auto mb-1">
+                  <ParkingSquare className="w-3.5 h-3.5" />
                 </div>
-                <p className="text-xl font-black text-[#1E293B] font-mono">{availableSpaces}</p>
-                <p className="text-[11px] font-bold text-[#64748B]">Available</p>
+                <p className="text-lg font-black text-[#1E293B] font-mono">{availableSpaces}</p>
+                <p className="text-[10px] font-bold text-[#64748B]">Available</p>
               </div>
 
               {/* Card 2: Occupied Spaces */}
               <div
                 onClick={() => navigateTo('yard')}
-                className="bg-[#FFFFFF] rounded-2xl p-4 border border-[#E2E8F0] shadow-xs text-center cursor-pointer hover:border-blue-300 transition"
+                className="bg-[#FFFFFF] rounded-xl p-2.5 sm:p-3 border border-[#E2E8F0] shadow-2xs text-center cursor-pointer hover:border-blue-300 transition"
               >
-                <div className="w-8 h-8 rounded-xl bg-blue-50 text-[#2563EB] flex items-center justify-center mx-auto mb-1.5">
-                  <Car className="w-4 h-4" />
+                <div className="w-7 h-7 rounded-lg bg-blue-50 text-[#2563EB] flex items-center justify-center mx-auto mb-1">
+                  <Car className="w-3.5 h-3.5" />
                 </div>
-                <p className="text-xl font-black text-[#1E293B] font-mono">{occupiedSpaces}</p>
-                <p className="text-[11px] font-bold text-[#64748B]">Occupied</p>
+                <p className="text-lg font-black text-[#1E293B] font-mono">{occupiedSpaces}</p>
+                <p className="text-[10px] font-bold text-[#64748B]">Occupied</p>
               </div>
 
               {/* Card 3: Reserved Spaces */}
               <div
                 onClick={() => navigateTo('reservations')}
-                className="bg-[#FFFFFF] rounded-2xl p-4 border border-[#E2E8F0] shadow-xs text-center cursor-pointer hover:border-amber-300 transition"
+                className="bg-[#FFFFFF] rounded-xl p-2.5 sm:p-3 border border-[#E2E8F0] shadow-2xs text-center cursor-pointer hover:border-amber-300 transition"
               >
-                <div className="w-8 h-8 rounded-xl bg-amber-50 text-[#F59E0B] flex items-center justify-center mx-auto mb-1.5">
-                  <Calendar className="w-4 h-4" />
+                <div className="w-7 h-7 rounded-lg bg-amber-50 text-[#F59E0B] flex items-center justify-center mx-auto mb-1">
+                  <Calendar className="w-3.5 h-3.5" />
                 </div>
-                <p className="text-xl font-black text-[#1E293B] font-mono">{reservedSpaces}</p>
-                <p className="text-[11px] font-bold text-[#64748B]">Reserved</p>
+                <p className="text-lg font-black text-[#1E293B] font-mono">{reservedSpaces}</p>
+                <p className="text-[10px] font-bold text-[#64748B]">Reserved</p>
               </div>
 
             </div>
