@@ -28,7 +28,7 @@ interface LoginPageProps {
   onCancel?: () => void;
 }
 
-type PortalType = 'customer' | 'staff' | 'technician' | 'attendant' | 'service_manager' | 'admin';
+type PortalType = 'customer' | 'staff' | 'technician' | 'attendant' | 'service_manager';
 
 export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin, onGoToConfirmEmail }) => {
   // Navigation screen state: 'portal_selection' or 'login'
@@ -69,8 +69,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin, onGoToConf
         return UserRole.PARKING_ATTENDANT;
       case 'service_manager':
         return UserRole.SERVICE_MANAGER;
-      case 'admin':
-        return UserRole.ADMINISTRATOR;
       default:
         return UserRole.CUSTOMER;
     }
@@ -188,20 +186,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin, onGoToConf
           subtitle: 'Oversee workshop repairs & staff roster',
           defaultUserEmail: 'denis.o@welilecarhub.com',
           defaultUserName: 'Denis Okello',
-        };
-      case 'admin':
-        return {
-          title: 'Systems Manager',
-          portalName: 'Systems Manager Portal',
-          roleName: 'Systems Manager',
-          icon: ShieldCheck,
-          emoji: '🛡️',
-          colorTheme: 'purple',
-          accentBg: 'bg-purple-500/15 text-purple-400 border-purple-500/30',
-          btnBg: 'bg-purple-600 hover:bg-purple-500 text-white shadow-purple-950/40',
-          subtitle: 'Admin controls & analytics',
-          defaultUserEmail: 'grace.admin@welilecarhub.com',
-          defaultUserName: 'Grace Namubiru',
         };
     }
   };
@@ -607,17 +591,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin, onGoToConf
               })}
             </div>
 
-            {/* Discreet Systems Admin Login Access */}
+            {/* System Footer Info */}
             <div className="pt-2 flex flex-col items-center gap-2">
-              <button
-                type="button"
-                onClick={() => handleSelectPortalCard('admin')}
-                className="text-3xs text-slate-500 hover:text-slate-300 font-mono transition cursor-pointer flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-slate-900/60 border border-transparent hover:border-slate-800"
-                title="Systems Administrator Login"
-              >
-                <Lock className="w-3 h-3 text-slate-400" />
-                <span>Systems Administrator Portal Access</span>
-              </button>
               <p className="text-[10px] text-slate-600 font-mono">
                 UG PARK • Smart Mobility Management System
               </p>

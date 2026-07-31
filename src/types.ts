@@ -3,7 +3,6 @@ export enum UserRole {
   PARKING_ATTENDANT = 'Parking Attendant',
   SERVICE_TECHNICIAN = 'Service Technician',
   SERVICE_MANAGER = 'Service Manager',
-  ADMINISTRATOR = 'Administrator',
 }
 
 export interface User {

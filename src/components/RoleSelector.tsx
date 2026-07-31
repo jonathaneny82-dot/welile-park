@@ -63,14 +63,6 @@ export const RoleSelector: React.FC<RoleSelectorProps> = ({
       activeColor: 'bg-sky-600 text-white border-sky-600 shadow-sm',
       desc: 'Assign mechanics to booked jobs, approve service diagnostics, and oversee workshop capacity.',
     },
-    {
-      role: UserRole.ADMINISTRATOR,
-      label: 'System Admin',
-      icon: Shield,
-      color: 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100',
-      activeColor: 'bg-slate-800 text-white border-slate-800 shadow-sm',
-      desc: 'Access financial charts, track overall spot occupancy, manage pricing models, and trigger AI parts predictions.',
-    },
   ];
 
   return (
@@ -132,7 +124,7 @@ export const RoleSelector: React.FC<RoleSelectorProps> = ({
             {rolesInfo.map((item) => {
               const Icon = item.icon;
               const isActive = currentRole === item.role;
-              const isAllowed = currentUser?.role === UserRole.ADMINISTRATOR || item.role === currentUser?.role;
+              const isAllowed = item.role === currentUser?.role;
               const isServiceRole = item.role === UserRole.SERVICE_TECHNICIAN || item.role === UserRole.SERVICE_MANAGER;
               const hasAlert = isServiceRole && servicesWithin48HoursCount > 0;
 

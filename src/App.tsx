@@ -137,10 +137,8 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (currentUser && currentUser.role !== UserRole.ADMINISTRATOR) {
-      if (currentRole !== currentUser.role) {
-        setCurrentRole(currentUser.role);
-      }
+    if (currentUser && currentRole !== currentUser.role) {
+      setCurrentRole(currentUser.role);
     }
   }, [currentUser, currentRole]);
 
@@ -158,12 +156,8 @@ export default function App() {
     setNotifications([newNotif, ...notifications].slice(0, 5));
   };
 
-  const handleRoleChange = (role: UserRole) => {
-    // Only Administrators can switch view modes across portals
-    if (currentUser?.role === UserRole.ADMINISTRATOR) {
-      setCurrentRole(role);
-      handleTriggerSimulatedNotification(`View mode updated to ${role}.`, 'info');
-    } else if (currentUser) {
+  const handleRoleChange = (_role: UserRole) => {
+    if (currentUser) {
       setCurrentRole(currentUser.role);
     }
   };

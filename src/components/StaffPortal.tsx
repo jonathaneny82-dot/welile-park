@@ -2662,7 +2662,7 @@ Format as a polite, clean, structured layout. Avoid deep developer jargon.`;
                 </button>
               </div>
 
-              {/* Systems Manager Verification Control Box */}
+              {/* Service Manager Verification Control Box */}
               {(() => {
                 const unverifiedUsers = users.filter((u) => u.isVerified === false);
                 if (unverifiedUsers.length === 0) return null;
@@ -2678,7 +2678,7 @@ Format as a polite, clean, structured layout. Avoid deep developer jargon.`;
                             Pending Account Verifications ({unverifiedUsers.length})
                           </h4>
                           <p className="text-xs text-slate-500">
-                            Systems Manager manual verification control for unverified user accounts.
+                            Service Manager manual verification control for unverified user accounts.
                           </p>
                         </div>
                       </div>
@@ -3623,7 +3623,7 @@ Format as a polite, clean, structured layout. Avoid deep developer jargon.`;
       {/* ==============================================================
           ROLE: SYSTEM ADMINISTRATOR VIEW
           ============================================================== */}
-      {currentRole === UserRole.ADMINISTRATOR && (() => {
+      {false && (() => {
         // Dynamically compile and sort all events/activities in the system chronologically
         const aggregatedActivities = (() => {
           interface SystemActivity {
@@ -4377,7 +4377,6 @@ Format as a polite, clean, structured layout. Avoid deep developer jargon.`;
                                 </td>
                                 <td className="px-3 py-3">
                                   <span className={`px-2 py-0.5 rounded font-mono text-3xs font-bold border ${
-                                    u.role === UserRole.ADMINISTRATOR ? 'bg-indigo-500/10 text-indigo-400 border-indigo-500/30' :
                                     u.role === UserRole.SERVICE_MANAGER ? 'bg-sky-500/10 text-sky-400 border-sky-500/30' :
                                     u.role === UserRole.SERVICE_TECHNICIAN ? 'bg-amber-500/10 text-amber-400 border-amber-500/30' :
                                     u.role === UserRole.PARKING_ATTENDANT ? 'bg-purple-500/10 text-purple-400 border-purple-500/30' :

@@ -42,7 +42,11 @@ import {
   BarChart3,
   DollarSign,
   TrendingUp,
-  PieChart
+  PieChart,
+  User as UserIcon,
+  HelpCircle,
+  Phone,
+  Mail
 } from 'lucide-react';
 
 interface DashboardProps {
@@ -88,6 +92,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   }, [activeTab, activeNav]);
   const [searchQuery, setSearchQuery] = useState('');
   const [showRoleMenu, setShowRoleMenu] = useState(false);
+  const [activeModal, setActiveModal] = useState<'profile' | 'notifications' | 'help' | 'settings' | null>(null);
 
   // Staff Authorization Management State
   const [showAddStaffModal, setShowAddStaffModal] = useState(false);
@@ -159,7 +164,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
     { role: UserRole.PARKING_ATTENDANT, label: 'Parking Attendant' },
     { role: UserRole.SERVICE_TECHNICIAN, label: 'Service Technician' },
     { role: UserRole.SERVICE_MANAGER, label: 'Service Manager' },
-    { role: UserRole.ADMINISTRATOR, label: 'Administrator' },
   ];
 
   if (currentRole === UserRole.PARKING_ATTENDANT) {
@@ -234,50 +238,69 @@ export const Dashboard: React.FC<DashboardProps> = ({
               <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
             </button>
 
-            {/* Role & Account Dropdown Menu */}
+            {/* Account & Profile Dropdown Menu */}
             {showRoleMenu && (
-              <div className="absolute top-full right-0 mt-2 bg-slate-900/95 backdrop-blur-xl rounded-2xl p-3 shadow-2xl border border-slate-700 z-50 min-w-[220px] space-y-2 text-slate-100">
-                <div className="flex items-center justify-between px-2 pb-1 border-b border-slate-800">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                    Session & Role Controls
-                  </span>
+              <div className="absolute top-full right-0 mt-2 bg-slate-900/95 backdrop-blur-xl rounded-2xl p-3 shadow-2xl border border-slate-700 z-50 min-w-[240px] text-slate-100">
+                {/* User Header Block */}
+                <div className="px-3 py-2.5 bg-slate-800/80 rounded-xl border border-slate-700/60 mb-2">
+                  <p className="text-xs font-black text-white truncate">{currentUser?.name || 'Authorized User'}</p>
+                  <p className="text-[10px] font-mono font-bold text-emerald-400 mt-0.5">{currentRole}</p>
                 </div>
 
-                {currentUser?.role === UserRole.ADMINISTRATOR && (
-                  <div className="space-y-1">
-                    <p className="text-[10px] font-medium text-slate-400 px-1">Switch View Mode:</p>
-                    {roles.map((r) => (
-                      <button
-                        key={r.role}
-                        onClick={() => {
-                          onRoleChange(r.role);
-                          setShowRoleMenu(false);
-                        }}
-                        className={`w-full text-left px-2.5 py-1.5 rounded-xl text-xs font-medium transition flex items-center justify-between cursor-pointer ${
-                          currentRole === r.role 
-                            ? 'bg-emerald-600 text-white font-bold' 
-                            : 'text-slate-300 hover:bg-slate-800'
-                        }`}
-                      >
-                        <span>{r.label}</span>
-                        {currentRole === r.role && <CheckCircle2 className="w-3.5 h-3.5 text-white" />}
-                      </button>
-                    ))}
-                  </div>
-                )}
+                <div className="border-t border-slate-800 my-1.5"></div>
 
-                <div className="border-t border-slate-800 pt-1.5 space-y-1">
+                {/* Profile Actions */}
+                <div className="space-y-1">
                   <button
-                    onClick={() => {
-                      setShowRoleMenu(false);
-                      onSignOut();
-                    }}
-                    className="w-full text-left px-2.5 py-1.5 rounded-xl text-xs font-bold text-rose-400 hover:bg-rose-950/60 transition flex items-center gap-2 cursor-pointer"
+                    onClick={() => { setShowRoleMenu(false); setActiveModal('profile'); }}
+                    className="w-full text-left px-3 py-2 rounded-xl text-xs font-semibold text-slate-200 hover:bg-slate-800 flex items-center gap-2.5 transition cursor-pointer"
                   >
-                    <LogOut className="w-3.5 h-3.5" />
-                    <span>Sign Out</span>
+                    <UserIcon className="w-4 h-4 text-purple-400" />
+                    <span>My Profile</span>
+                  </button>
+
+                  <button
+                    onClick={() => { setShowRoleMenu(false); setActiveModal('notifications'); }}
+                    className="w-full text-left px-3 py-2 rounded-xl text-xs font-semibold text-slate-200 hover:bg-slate-800 flex items-center justify-between transition cursor-pointer"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <Bell className="w-4 h-4 text-purple-400" />
+                      <span>Notifications</span>
+                    </div>
+                    {notifications.length > 0 && (
+                      <span className="px-1.5 py-0.5 bg-emerald-500 text-slate-950 font-bold text-[10px] rounded-full">
+                        {notifications.length}
+                      </span>
+                    )}
+                  </button>
+
+                  <button
+                    onClick={() => { setShowRoleMenu(false); setActiveModal('help'); }}
+                    className="w-full text-left px-3 py-2 rounded-xl text-xs font-semibold text-slate-200 hover:bg-slate-800 flex items-center gap-2.5 transition cursor-pointer"
+                  >
+                    <HelpCircle className="w-4 h-4 text-purple-400" />
+                    <span>Help & Support</span>
+                  </button>
+
+                  <button
+                    onClick={() => { setShowRoleMenu(false); setActiveModal('settings'); }}
+                    className="w-full text-left px-3 py-2 rounded-xl text-xs font-semibold text-slate-200 hover:bg-slate-800 flex items-center gap-2.5 transition cursor-pointer"
+                  >
+                    <Settings className="w-4 h-4 text-purple-400" />
+                    <span>Settings</span>
                   </button>
                 </div>
+
+                <div className="border-t border-slate-800 my-1.5"></div>
+
+                {/* Sign Out */}
+                <button
+                  onClick={() => { setShowRoleMenu(false); onSignOut(); }}
+                  className="w-full text-left px-3 py-2 rounded-xl text-xs font-bold text-rose-400 hover:bg-rose-950/50 flex items-center gap-2.5 transition cursor-pointer"
+                >
+                  <LogOut className="w-4 h-4 text-rose-400" />
+                  <span>Sign Out</span>
+                </button>
               </div>
             )}
           </div>
@@ -331,32 +354,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 >
                   Portal Workflows
                 </button>
-
-                {currentUser?.role === UserRole.ADMINISTRATOR && (
-                  <>
-                    <button
-                      onClick={() => setActiveTab('permissions')}
-                      className={`text-sm font-bold pb-2 transition cursor-pointer relative ${
-                        activeTab === 'permissions' 
-                          ? 'text-slate-900 border-b-2 border-slate-900' 
-                          : 'text-slate-400 hover:text-slate-700'
-                      }`}
-                    >
-                      User Permissions
-                    </button>
-
-                    <button
-                      onClick={() => setActiveTab('executions')}
-                      className={`text-sm font-bold pb-2 transition cursor-pointer relative ${
-                        activeTab === 'executions' 
-                          ? 'text-slate-900 border-b-2 border-slate-900' 
-                          : 'text-slate-400 hover:text-slate-700'
-                      }`}
-                    >
-                      All System Activities
-                    </button>
-                  </>
-                )}
               </div>
 
               {/* Workspace Filter Search */}
@@ -473,18 +470,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 {/* Role Mode Matrix Card */}
                 <div className="bg-white p-4 rounded-xl border border-slate-200 space-y-2.5 shadow-2xs">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-slate-700 uppercase tracking-wider font-mono">Role Selector View</span>
-                    {currentRole === UserRole.ADMINISTRATOR ? (
-                      <span className="text-4xs font-mono font-bold bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded uppercase">Admin Rights</span>
-                    ) : (
-                      <span className="text-4xs font-mono font-bold bg-amber-100 text-amber-800 px-2 py-0.5 rounded uppercase flex items-center gap-1">
-                        <Lock className="w-2.5 h-2.5" /> Restricted
-                      </span>
-                    )}
+                    <span className="text-xs font-bold text-slate-700 uppercase tracking-wider font-mono">Role Status</span>
+                    <span className="text-4xs font-mono font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded uppercase flex items-center gap-1">
+                      <ShieldCheck className="w-2.5 h-2.5" /> Authenticated
+                    </span>
                   </div>
                   <div className="space-y-1.5">
                     {roles.map((r) => {
-                      const isAllowed = currentUser?.role === UserRole.ADMINISTRATOR || r.role === currentUser?.role;
+                      const isAllowed = r.role === currentUser?.role;
                       return (
                         <button
                           key={r.role}
@@ -512,14 +505,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </div>
 
               {/* System Accounts Access Control Section */}
-              {currentRole === UserRole.ADMINISTRATOR ? (
-                /* SYSTEMS ADMINISTRATOR: Full System User Accounts Index & Employee Authorizations */
+              {currentUser?.role === UserRole.SERVICE_MANAGER ? (
+                /* SERVICE MANAGER: Staff Authorization & Accounts Index */
                 <div className="bg-white border border-indigo-200 rounded-2xl p-5 space-y-4 shadow-sm">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
                     <div>
                       <h4 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
                         <Users className="w-4 h-4 text-indigo-600" />
-                        Systems Administrator - Staff Authorization & Accounts Management
+                        Service Manager - Staff Authorization & Accounts Management
                       </h4>
                       <p className="text-2xs text-slate-500">
                         Authorize employee login accounts for Attendants, Technicians, Managers, or modify user roles.
@@ -555,62 +548,48 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           <th className="px-3 py-2.5">Email / Contacts</th>
                           <th className="px-3 py-2.5">Role Permission</th>
                           <th className="px-3 py-2.5">Staff Auth Status</th>
-                          <th className="px-3 py-2.5 text-right">Admin Actions</th>
+                          <th className="px-3 py-2.5 text-right">Actions</th>
                         </tr>
                       </thead>
                       <tbody>
                         {users.map((u) => {
                           const isStaff = u.role !== UserRole.CUSTOMER;
-                          const isAuthorized = u.isAuthorizedStaff || u.role === UserRole.ADMINISTRATOR || u.authorizationStatus === 'Authorized';
+                          const isAuthorized = u.isAuthorizedStaff || u.authorizationStatus === 'Authorized';
 
                           return (
                             <tr key={u.id} className="border-b border-slate-100 hover:bg-slate-50/70 transition">
                               <td className="px-3 py-3 font-mono font-bold text-slate-900 text-2xs">{u.id}</td>
                               <td className="px-3 py-3 font-extrabold text-slate-900">
                                 {u.name}
-                                {u.role === UserRole.ADMINISTRATOR && (
-                                  <span className="ml-1.5 text-4xs bg-indigo-100 text-indigo-800 px-1.5 py-0.5 rounded font-mono font-bold">ADMIN</span>
-                                )}
                               </td>
                               <td className="px-3 py-3 font-mono text-2xs text-slate-600">
                                 <div>{u.email}</div>
                                 <div className="text-3xs text-slate-400">{u.phone || '+256 700 000000'}</div>
                               </td>
                               <td className="px-3 py-3">
-                                {u.role === UserRole.ADMINISTRATOR ? (
-                                  <span className="px-2 py-0.5 rounded font-mono text-3xs font-bold border bg-indigo-50 text-indigo-700 border-indigo-200">
-                                    ADMINISTRATOR
-                                  </span>
-                                ) : (
-                                  <select
-                                    value={u.role}
-                                    onChange={(e) => {
-                                      const newR = e.target.value as UserRole;
-                                      const authorizeStaff = newR !== UserRole.CUSTOMER;
-                                      handleAuthorizeUser(u.id, newR, authorizeStaff);
-                                    }}
-                                    className="bg-slate-50 border border-slate-300 text-slate-800 text-xs rounded-lg px-2 py-1 outline-none font-medium cursor-pointer"
-                                  >
-                                    <option value={UserRole.CUSTOMER}>Customer</option>
-                                    <option value={UserRole.PARKING_ATTENDANT}>Parking Attendant</option>
-                                    <option value={UserRole.SERVICE_TECHNICIAN}>Service Technician</option>
-                                    <option value={UserRole.SERVICE_MANAGER}>Service Manager</option>
-                                    <option value={UserRole.ADMINISTRATOR}>Administrator</option>
-                                  </select>
-                                )}
+                                <select
+                                  value={u.role}
+                                  onChange={(e) => {
+                                    const newR = e.target.value as UserRole;
+                                    const authorizeStaff = newR !== UserRole.CUSTOMER;
+                                    handleAuthorizeUser(u.id, newR, authorizeStaff);
+                                  }}
+                                  className="bg-slate-50 border border-slate-300 text-slate-800 text-xs rounded-lg px-2 py-1 outline-none font-medium cursor-pointer"
+                                >
+                                  <option value={UserRole.CUSTOMER}>Customer</option>
+                                  <option value={UserRole.PARKING_ATTENDANT}>Parking Attendant</option>
+                                  <option value={UserRole.SERVICE_TECHNICIAN}>Service Technician</option>
+                                  <option value={UserRole.SERVICE_MANAGER}>Service Manager</option>
+                                </select>
                               </td>
                               <td className="px-3 py-3 font-mono text-3xs">
-                                {u.role === UserRole.ADMINISTRATOR ? (
-                                  <span className="text-indigo-700 font-bold bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded flex items-center gap-1 w-max">
-                                    <ShieldCheck className="w-3 h-3" /> System Admin
-                                  </span>
-                                ) : isAuthorized ? (
+                                {isAuthorized ? (
                                   <span className="text-emerald-700 font-bold bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded flex items-center gap-1 w-max">
                                     <UserCheck className="w-3 h-3" /> Authorized Employee
                                   </span>
                                 ) : u.authorizationStatus === 'Pending Approval' ? (
                                   <span className="text-amber-800 font-bold bg-amber-50 border border-amber-200 px-2 py-0.5 rounded flex items-center gap-1 w-max">
-                                    <Clock className="w-3 h-3" /> Pending Admin Approval
+                                    <Clock className="w-3 h-3" /> Pending Approval
                                   </span>
                                 ) : (
                                   <span className="text-slate-600 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded w-max inline-block">
@@ -619,9 +598,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                                 )}
                               </td>
                               <td className="px-3 py-3 text-right font-mono text-3xs">
-                                {u.role === UserRole.ADMINISTRATOR ? (
-                                  <span className="text-slate-400 italic">Owner</span>
-                                ) : !isAuthorized ? (
+                                {!isAuthorized ? (
                                   <button
                                     onClick={() => {
                                       const defaultStaffRole = u.role !== UserRole.CUSTOMER ? u.role : UserRole.PARKING_ATTENDANT;
@@ -710,7 +687,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
                               <option value={UserRole.PARKING_ATTENDANT}>Parking Attendant</option>
                               <option value={UserRole.SERVICE_TECHNICIAN}>Service Technician</option>
                               <option value={UserRole.SERVICE_MANAGER}>Service Manager</option>
-                              <option value={UserRole.ADMINISTRATOR}>Administrator</option>
                             </select>
                           </div>
 
@@ -795,6 +771,239 @@ export const Dashboard: React.FC<DashboardProps> = ({
         </div>
 
       </main>
+
+      {/* ================= MODALS FOR PROFILE MENU ================= */}
+      {activeModal === 'profile' && (
+        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95 duration-200 text-slate-900">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-purple-100 text-purple-700 rounded-xl font-bold">
+                  <UserIcon className="w-5 h-5 text-purple-600" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-base text-slate-900">User Profile</h3>
+                  <p className="text-3xs text-slate-500 font-mono">Role-Based Identity Credentials</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setActiveModal(null)}
+                className="p-1.5 hover:bg-slate-100 text-slate-400 rounded-xl transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500 font-medium">Full Name</span>
+                  <span className="font-extrabold text-slate-900">{currentUser?.name || 'Authorized User'}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500 font-medium">Registered Role</span>
+                  <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-bold font-mono rounded-full">
+                    {currentRole}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500 font-medium">Email Address</span>
+                  <span className="font-mono text-slate-700">{currentUser?.email || 'user@ugpark.co.ug'}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500 font-medium">Phone Number</span>
+                  <span className="font-mono text-slate-700">{currentUser?.phone || '+256 700 000000'}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500 font-medium">Authorization Status</span>
+                  <span className="font-bold text-emerald-600 flex items-center gap-1">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    Authorized Access
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="pt-2 flex justify-end">
+              <button
+                onClick={() => setActiveModal(null)}
+                className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl shadow-md transition cursor-pointer"
+              >
+                Close Profile
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeModal === 'notifications' && (
+        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95 duration-200 text-slate-900">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-amber-100 text-amber-700 rounded-xl font-bold">
+                  <Bell className="w-5 h-5 text-amber-600" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-base text-slate-900">System Notifications</h3>
+                  <p className="text-3xs text-slate-500 font-mono">Workplace & Service Alerts</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setActiveModal(null)}
+                className="p-1.5 hover:bg-slate-100 text-slate-400 rounded-xl transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+              {notifications.length === 0 ? (
+                <div className="p-4 text-center text-xs text-slate-500 bg-slate-50 rounded-2xl border border-slate-100">
+                  No new unread notifications.
+                </div>
+              ) : (
+                notifications.map((n, i) => (
+                  <div key={i} className="p-3 bg-slate-50 rounded-xl border border-slate-200/80 flex items-start gap-2.5">
+                    <Bell className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                    <div className="flex-1 text-xs">
+                      <p className="font-semibold text-slate-800">{n.text}</p>
+                      <p className="text-[10px] text-slate-400 font-mono mt-0.5">{n.time || 'Just now'}</p>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="pt-2 flex justify-between items-center">
+              {notifications.length > 0 && (
+                <button
+                  onClick={onClearNotifications}
+                  className="text-xs text-rose-600 font-bold hover:underline cursor-pointer"
+                >
+                  Clear All
+                </button>
+              )}
+              <button
+                onClick={() => setActiveModal(null)}
+                className="ml-auto px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl shadow-md transition cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeModal === 'help' && (
+        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95 duration-200 text-slate-900">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-sky-100 text-sky-700 rounded-xl font-bold">
+                  <HelpCircle className="w-5 h-5 text-sky-600" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-base text-slate-900">Help & Support</h3>
+                  <p className="text-3xs text-slate-500 font-mono">Kampala Customer & Staff Helpline</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setActiveModal(null)}
+                className="p-1.5 hover:bg-slate-100 text-slate-400 rounded-xl transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div className="p-3.5 bg-sky-50/70 rounded-2xl border border-sky-100 space-y-2">
+                <div className="flex items-center gap-3 text-sky-900">
+                  <Phone className="w-4 h-4 text-sky-600 shrink-0" />
+                  <div>
+                    <p className="font-bold">Customer & Service Toll-Free Hotline</p>
+                    <p className="text-xs font-mono font-black">+256 800 100 200</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 text-sky-900 pt-1 border-t border-sky-200/50">
+                  <Phone className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <div>
+                    <p className="font-bold">24/7 Mobile Van & Emergency Towing</p>
+                    <p className="text-xs font-mono font-black">+256 700 999 888</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 text-sky-900 pt-1 border-t border-sky-200/50">
+                  <Mail className="w-4 h-4 text-purple-600 shrink-0" />
+                  <div>
+                    <p className="font-bold">Support Email</p>
+                    <p className="text-xs font-mono">support@welilecarhub.com</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="pt-2 flex justify-end">
+              <button
+                onClick={() => setActiveModal(null)}
+                className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl shadow-md transition cursor-pointer"
+              >
+                Close Support
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeModal === 'settings' && (
+        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95 duration-200 text-slate-900">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-slate-100 text-slate-700 rounded-xl font-bold">
+                  <Settings className="w-5 h-5 text-slate-600" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-base text-slate-900">Account Settings</h3>
+                  <p className="text-3xs text-slate-500 font-mono">Preferences & Security</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setActiveModal(null)}
+                className="p-1.5 hover:bg-slate-100 text-slate-400 rounded-xl transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/80 flex items-center justify-between">
+                <div>
+                  <p className="font-bold text-slate-800">SMS Notifications</p>
+                  <p className="text-3xs text-slate-500">Receive entry/exit & repair updates on mobile</p>
+                </div>
+                <input type="checkbox" defaultChecked className="w-4 h-4 accent-purple-600" />
+              </div>
+
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/80 flex items-center justify-between">
+                <div>
+                  <p className="font-bold text-slate-800">Email Alerts</p>
+                  <p className="text-3xs text-slate-500">Service receipts & booking confirmations</p>
+                </div>
+                <input type="checkbox" defaultChecked className="w-4 h-4 accent-purple-600" />
+              </div>
+            </div>
+
+            <div className="pt-2 flex justify-end">
+              <button
+                onClick={() => setActiveModal(null)}
+                className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl shadow-md transition cursor-pointer"
+              >
+                Save Preferences
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

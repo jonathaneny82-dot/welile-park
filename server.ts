@@ -526,7 +526,7 @@ const users: User[] = [
     name: 'Grace Namubiru',
     email: 'grace.admin@welilecarhub.com',
     phone: '+256 700 111222',
-    role: UserRole.ADMINISTRATOR,
+    role: UserRole.SERVICE_MANAGER,
     createdAt: '2025-12-01T08:00:00Z',
     isAuthorizedStaff: true,
     authorizationStatus: 'Authorized',
