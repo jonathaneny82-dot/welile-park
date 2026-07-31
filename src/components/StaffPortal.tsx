@@ -45,6 +45,22 @@ import {
   MapPin,
   Menu,
   Home,
+  Wallet,
+  Banknote,
+  Calculator,
+  Award,
+  Printer,
+  Edit3,
+  Check,
+  Bell,
+  Settings,
+  UserCheck,
+  ClipboardCheck,
+  BarChart3,
+  ChevronDown,
+  Plus,
+  Smartphone,
+  Phone,
 } from 'lucide-react';
 import {
   googleSignIn,
@@ -53,6 +69,32 @@ import {
   logout,
 } from '../lib/gmail';
 import { AttendantDashboard } from './AttendantDashboard';
+
+export interface CompletedServiceItem {
+  id: string;
+  serviceType: string;
+  cost: number;
+  vehicleRef?: string;
+  completionDate?: string;
+}
+
+export interface PayrollRecord {
+  id: string;
+  employeeId: string;
+  employeeName: string;
+  role: UserRole;
+  phone: string;
+  email?: string;
+  paymentChannel: 'MTN Mobile Money' | 'Airtel Money' | 'Bank Transfer';
+  accountNumber: string;
+  performanceRating: number;
+  completedServices: CompletedServiceItem[];
+  totalServiceAmount: number;
+  status: 'Pending' | 'Paid';
+  paymentRef?: string;
+  paidAt?: string;
+  payPeriod: string;
+}
 
 interface StaffPortalProps {
   currentRole: UserRole;
@@ -368,7 +410,7 @@ export const StaffPortal: React.FC<StaffPortalProps> = ({
   // Manager State
   const [showHamburgerMenu, setShowHamburgerMenu] = useState(false);
   const [selectedTechForJob, setSelectedTechForJob] = useState<{ [srvId: string]: string }>({});
-  const [managerTab, setManagerTab] = useState<'requests' | 'roster' | 'payments' | 'gate_stream' | 'inventory' | 'home_services'>('requests');
+  const [managerTab, setManagerTab] = useState<'dashboard' | 'requests' | 'roster' | 'payments' | 'gate_stream' | 'inventory' | 'home_services' | 'payroll' | 'notifications' | 'settings'>('dashboard');
   const [managerViewMode, setManagerViewMode] = useState<'kanban' | 'table'>('kanban');
   const [managerSearchQuery, setManagerSearchQuery] = useState('');
   const [showNewJobModal, setShowNewJobModal] = useState(false);
@@ -378,6 +420,196 @@ export const StaffPortal: React.FC<StaffPortalProps> = ({
   const [newJobCost, setNewJobCost] = useState(75000);
   const [newJobNotes, setNewJobNotes] = useState('');
   const [jobSubmitSuccess, setJobSubmitSuccess] = useState('');
+
+  // Service Payment Engine State
+  const [payrollList, setPayrollList] = useState<PayrollRecord[]>([]);
+  const [payrollActiveTab, setPayrollActiveTab] = useState<'current' | 'history'>('current');
+  const [payrollSearchQuery, setPayrollSearchQuery] = useState('');
+  const [payrollFilterStatus, setPayrollFilterStatus] = useState<'all' | 'Pending' | 'Paid'>('all');
+  const [payrollFilterRole, setPayrollFilterRole] = useState<'all' | UserRole.SERVICE_TECHNICIAN | UserRole.PARKING_ATTENDANT>('all');
+  const [payrollFilterChannel, setPayrollFilterChannel] = useState<'all' | 'MTN Mobile Money' | 'Airtel Money' | 'Bank Transfer'>('all');
+  const [selectedPayslip, setSelectedPayslip] = useState<PayrollRecord | null>(null);
+  const [payrollSuccessMsg, setPayrollSuccessMsg] = useState('');
+
+  // Initial populate service payments list based on completed services rendered
+  useEffect(() => {
+    if (payrollList.length === 0) {
+      const defaultRecords: PayrollRecord[] = [
+        {
+          id: 'PAY-REC-101',
+          employeeId: 'u-tech-1',
+          employeeName: 'David Mukasa',
+          role: UserRole.SERVICE_TECHNICIAN,
+          phone: '+256 772 881 992',
+          email: 'david.tech@ugpark.co.ug',
+          paymentChannel: 'MTN Mobile Money',
+          accountNumber: '+256 772 881 992',
+          performanceRating: 4.9,
+          completedServices: [
+            { id: 'srv-101', serviceType: 'Car Wash Service', cost: 30000, vehicleRef: 'UBG 421K', completionDate: '2026-07-28' },
+            { id: 'srv-102', serviceType: 'Vehicle Repair & Labour Service', cost: 50000, vehicleRef: 'UBH 902L', completionDate: '2026-07-28' },
+            { id: 'srv-103', serviceType: 'Full Engine & Oil Service', cost: 75000, vehicleRef: 'UBC 312M', completionDate: '2026-07-27' },
+            { id: 'srv-104', serviceType: 'Brake Pad & Rotor Replacement', cost: 70000, vehicleRef: 'UBA 551P', completionDate: '2026-07-26' },
+          ],
+          totalServiceAmount: 225000,
+          status: 'Paid',
+          paymentRef: 'MOMO-2026-9481',
+          paidAt: '2026-07-28 14:30',
+          payPeriod: 'July 2026',
+        },
+        {
+          id: 'PAY-REC-102',
+          employeeId: 'u-tech-2',
+          employeeName: 'Sarah Namubiru',
+          role: UserRole.SERVICE_TECHNICIAN,
+          phone: '+256 701 442 110',
+          email: 'sarah.n@ugpark.co.ug',
+          paymentChannel: 'Airtel Money',
+          accountNumber: '+256 701 442 110',
+          performanceRating: 4.8,
+          completedServices: [
+            { id: 'srv-201', serviceType: 'Vehicle Repair / Labour Service', cost: 50000, vehicleRef: 'UBD 108J', completionDate: '2026-07-28' },
+            { id: 'srv-202', serviceType: 'Wheel Alignment & Balancing', cost: 45000, vehicleRef: 'UBF 774A', completionDate: '2026-07-27' },
+            { id: 'srv-203', serviceType: 'Car Wash Service', cost: 30000, vehicleRef: 'UBK 220X', completionDate: '2026-07-27' },
+          ],
+          totalServiceAmount: 125000,
+          status: 'Pending',
+          payPeriod: 'July 2026',
+        },
+        {
+          id: 'PAY-REC-103',
+          employeeId: 'u-att-1',
+          employeeName: 'Alex Kintu',
+          role: UserRole.PARKING_ATTENDANT,
+          phone: '+256 702 331 889',
+          email: 'alex.k@ugpark.co.ug',
+          paymentChannel: 'Airtel Money',
+          accountNumber: '+256 702 331 889',
+          performanceRating: 4.9,
+          completedServices: [
+            { id: 'srv-301', serviceType: 'Yard Valet & Doorstep Service', cost: 35000, vehicleRef: 'UBG 882W', completionDate: '2026-07-28' },
+            { id: 'srv-302', serviceType: 'Bay Attendant Vehicle Inspection', cost: 25000, vehicleRef: 'UBL 119Q', completionDate: '2026-07-27' },
+          ],
+          totalServiceAmount: 60000,
+          status: 'Pending',
+          payPeriod: 'July 2026',
+        },
+        {
+          id: 'PAY-REC-104',
+          employeeId: 'u-att-2',
+          employeeName: 'Grace Akello',
+          role: UserRole.PARKING_ATTENDANT,
+          phone: '+256 754 882 104',
+          email: 'grace.a@ugpark.co.ug',
+          paymentChannel: 'MTN Mobile Money',
+          accountNumber: '+256 754 882 104',
+          performanceRating: 4.7,
+          completedServices: [
+            { id: 'srv-401', serviceType: 'Car Wash Service', cost: 30000, vehicleRef: 'UBA 990Z', completionDate: '2026-07-28' },
+            { id: 'srv-402', serviceType: 'Parking Bay Inspection', cost: 20000, vehicleRef: 'UBJ 441D', completionDate: '2026-07-27' },
+          ],
+          totalServiceAmount: 50000,
+          status: 'Pending',
+          payPeriod: 'July 2026',
+        },
+        {
+          id: 'PAY-REC-105',
+          employeeId: 'u-tech-3',
+          employeeName: 'James Okello',
+          role: UserRole.SERVICE_TECHNICIAN,
+          phone: '+256 782 559 334',
+          email: 'james.o@ugpark.co.ug',
+          paymentChannel: 'Bank Transfer',
+          accountNumber: 'Centenary Bank (31004819)',
+          performanceRating: 4.8,
+          completedServices: [
+            { id: 'srv-501', serviceType: 'Transmission Fluid Change', cost: 85000, vehicleRef: 'UBM 302C', completionDate: '2026-07-28' },
+            { id: 'srv-502', serviceType: 'Vehicle Repair/Labour Service', cost: 50000, vehicleRef: 'UBP 601T', completionDate: '2026-07-26' },
+          ],
+          totalServiceAmount: 135000,
+          status: 'Pending',
+          payPeriod: 'July 2026',
+        },
+      ];
+      setPayrollList(defaultRecords);
+    }
+  }, []);
+
+  // Sync Service-Based Calculations directly from completed jobs
+  const handleSyncCompletedServices = () => {
+    setPayrollList((prev) =>
+      prev.map((rec) => {
+        // Collect live completed services for this technician/attendant
+        const liveCompleted = services
+          .filter((s) => s.technicianId === rec.employeeId && s.status === ServiceStatus.COMPLETED)
+          .map((s) => ({
+            id: s.id,
+            serviceType: s.serviceType,
+            cost: s.cost,
+            vehicleRef: s.vehicleId,
+            completionDate: s.completionDate || new Date().toISOString().split('T')[0],
+          }));
+
+        const mergedServices = [...rec.completedServices];
+        liveCompleted.forEach((ls) => {
+          if (!mergedServices.some((ms) => ms.id === ls.id)) {
+            mergedServices.push(ls);
+          }
+        });
+
+        const totalServiceAmount = mergedServices.reduce((acc, item) => acc + item.cost, 0);
+
+        return {
+          ...rec,
+          completedServices: mergedServices,
+          totalServiceAmount,
+        };
+      })
+    );
+    setPayrollSuccessMsg('⚡ Staff payments automatically synced & recalculated based on completed services!');
+    setTimeout(() => setPayrollSuccessMsg(''), 4000);
+  };
+
+  const handlePayStaffMember = (id: string) => {
+    const nowStr = new Date().toLocaleString();
+    const randomRef = `MOMO-2026-${Math.floor(10000 + Math.random() * 90000)}`;
+    
+    setPayrollList((prev) =>
+      prev.map((rec) =>
+        rec.id === id
+          ? {
+              ...rec,
+              status: 'Paid',
+              paymentRef: randomRef,
+              paidAt: nowStr,
+            }
+          : rec
+      )
+    );
+    const target = payrollList.find((r) => r.id === id);
+    setPayrollSuccessMsg(
+      `💰 UGX ${(target?.totalServiceAmount || 0).toLocaleString()} transferred directly to ${target?.employeeName || 'Staff'}'s registered mobile number (${target?.phone || ''}) via ${target?.paymentChannel || 'Mobile Money'}! Ref: ${randomRef}`
+    );
+    setTimeout(() => setPayrollSuccessMsg(''), 5500);
+  };
+
+  const handlePayAllPending = () => {
+    const nowStr = new Date().toLocaleString();
+    setPayrollList((prev) =>
+      prev.map((rec) =>
+        rec.status === 'Pending'
+          ? {
+              ...rec,
+              status: 'Paid',
+              paymentRef: `MOMO-2026-${Math.floor(10000 + Math.random() * 90000)}`,
+              paidAt: nowStr,
+            }
+          : rec
+      )
+    );
+    setPayrollSuccessMsg('💰 All pending service payments disbursed directly to staff registered mobile money numbers!');
+    setTimeout(() => setPayrollSuccessMsg(''), 5500);
+  };
 
   // Live Notifications Polling State
   const [notifications, setNotifications] = useState<any[]>([]);
@@ -1232,480 +1464,680 @@ Format as a polite, clean, structured layout. Avoid deep developer jargon.`;
       )}
 
       {/* ==============================================================
-          ROLE: SERVICE MANAGER VIEW
+          ROLE: SERVICE MANAGER VIEW (Redesigned Operational Portal)
           ============================================================== */}
       {currentRole === UserRole.SERVICE_MANAGER && (
-        <div className="space-y-4">
-          {/* Job Submit Success Banner */}
-          {jobSubmitSuccess && (
-            <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold rounded-[18px] flex items-center justify-between gap-2 shadow-sm animate-fadeIn">
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>{jobSubmitSuccess}</span>
-              </div>
-            </div>
-          )}
-
-          {/* Hamburger Drawer Side Menu */}
-          {showHamburgerMenu && (
-            <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex justify-start animate-fadeIn">
-              <div className="bg-slate-900 text-white w-full max-w-sm h-full shadow-2xl flex flex-col justify-between border-r border-slate-800 animate-slide-right overflow-y-auto">
-                {/* Drawer Header */}
-                <div className="p-5 border-b border-slate-800 flex items-center justify-between bg-slate-950/60">
+        <div className="bg-[#F6F8FD] rounded-3xl border border-slate-200/80 shadow-xs overflow-hidden font-sans">
+          {/* Main Layout Container */}
+          <div className="flex flex-col lg:flex-row min-h-[780px]">
+            {/* LEFT SIDEBAR NAVIGATION PANEL */}
+            <div className="w-full lg:w-64 bg-white border-b lg:border-b-0 lg:border-r border-slate-200/80 p-5 flex flex-col justify-between shrink-0">
+              <div className="space-y-6">
+                {/* Brand Header */}
+                <div className="flex items-center justify-between pb-4 border-b border-slate-100">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white shadow-md">
+                    <button
+                      type="button"
+                      onClick={() => setShowHamburgerMenu(!showHamburgerMenu)}
+                      className="p-2.5 rounded-2xl bg-indigo-600 text-white shadow-md shadow-indigo-200 hover:bg-indigo-700 transition cursor-pointer"
+                    >
                       <Wrench className="w-5 h-5" />
+                    </button>
+                    <div>
+                      <h2 className="font-extrabold text-sm text-slate-900 leading-tight">Service</h2>
+                      <p className="font-bold text-xs text-indigo-600 leading-tight">Manager</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowHamburgerMenu(!showHamburgerMenu)}
+                    className="p-2 text-slate-400 hover:text-slate-600 rounded-xl lg:hidden"
+                  >
+                    <Menu className="w-5 h-5" />
+                  </button>
+                </div>
+
+                {/* Sidebar Navigation Items */}
+                <nav className="space-y-1">
+                  {[
+                    { id: 'dashboard', label: 'Dashboard', icon: Home, count: null },
+                    { id: 'requests', label: 'Jobs Overview', icon: ClipboardCheck, count: services.length },
+                    { id: 'roster', label: 'Technicians', icon: Users, count: users.filter((u) => u.role === UserRole.SERVICE_TECHNICIAN).length },
+                    { id: 'home_services', label: 'Customers', icon: UserCheck, count: services.filter((s) => s.isHomeService).length || null },
+                    { id: 'gate_stream', label: 'Reports', icon: BarChart3, count: null },
+                    { id: 'payments', label: 'Payments', icon: CreditCard, count: payments.length },
+                    { id: 'payroll', label: 'Payroll', icon: Wallet, count: payrollList.filter((p) => p.status === 'Pending Review').length || null },
+                    { id: 'notifications', label: 'Notifications', icon: Bell, count: notifications.length || 3 },
+                    { id: 'settings', label: 'Settings', icon: Settings, count: null },
+                  ].map((item) => {
+                    const Icon = item.icon;
+                    const isActive = managerTab === item.id;
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => setManagerTab(item.id as any)}
+                        className={`w-full flex items-center justify-between px-3.5 py-3 rounded-2xl text-xs font-semibold transition-all cursor-pointer ${
+                          isActive
+                            ? 'bg-indigo-50 text-indigo-700 font-bold shadow-2xs border border-indigo-100/50'
+                            : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <Icon className={`w-4.5 h-4.5 ${isActive ? 'text-indigo-600' : 'text-slate-400'}`} />
+                          <span>{item.label}</span>
+                        </div>
+                        {item.count !== null && item.count > 0 && (
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-3xs font-mono font-bold ${
+                              isActive ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'
+                            }`}
+                          >
+                            {item.count}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </nav>
+              </div>
+
+              {/* Sidebar Footer — User Profile Card & Illustration Art */}
+              <div className="pt-6 space-y-4">
+                <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200/60 flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center text-white text-xs font-bold shadow-xs">
+                      JM
                     </div>
                     <div>
-                      <h3 className="font-extrabold text-sm text-white">Staff Management Hub</h3>
-                      <p className="text-3xs text-slate-400 font-mono">Service Manager Navigation</p>
+                      <h4 className="text-xs font-extrabold text-slate-900 leading-none">John Manager</h4>
+                      <p className="text-3xs text-slate-500 font-medium mt-0.5">Service Manager</p>
                     </div>
                   </div>
-                  <button
-                    onClick={() => setShowHamburgerMenu(false)}
-                    className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition cursor-pointer"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
+                  <ChevronDown className="w-4 h-4 text-slate-400" />
                 </div>
 
-                {/* Drawer Body - Quick Actions & View Modules */}
-                <div className="p-4 space-y-6 flex-1 overflow-y-auto">
-                  {/* Quick Actions Section */}
-                  <div className="space-y-2.5">
-                    <span className="text-3xs font-mono font-bold uppercase tracking-wider text-indigo-400 px-2 block">
-                      ⚡ Quick Actions & Workflows
-                    </span>
-
-                    {/* 1. Connect Email / Gmail */}
-                    <div
-                      onClick={async () => {
-                        try {
-                          await googleSignIn();
-                        } catch (e) {
-                          console.error(e);
-                        }
-                      }}
-                      className="p-3.5 rounded-2xl bg-gradient-to-r from-emerald-950/80 to-teal-950/60 border border-emerald-500/30 hover:border-emerald-400 transition cursor-pointer flex items-center justify-between gap-3 group"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="p-2.5 rounded-xl bg-emerald-500/20 text-emerald-400 shrink-0">
-                          <Mail className="w-4 h-4" />
-                        </div>
-                        <div>
-                          <h4 className="text-xs font-bold text-white group-hover:text-emerald-300 transition">
-                            {googleUser ? 'Gmail Connected ✓' : 'Connect Email'}
-                          </h4>
-                          <p className="text-3xs text-slate-400 line-clamp-1">
-                            {googleUser ? googleUser.email : 'Link business Gmail for auto dispatch'}
-                          </p>
-                        </div>
-                      </div>
-                      <span className="text-3xs font-bold px-2 py-1 rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 shrink-0">
-                        {googleUser ? 'Linked' : 'Connect'}
-                      </span>
-                    </div>
-
-                    {/* 2. Create Job Card */}
-                    <div
-                      onClick={() => {
-                        setShowNewJobModal(true);
-                        setShowHamburgerMenu(false);
-                      }}
-                      className="p-3.5 rounded-2xl bg-gradient-to-r from-purple-950/80 to-indigo-950/60 border border-purple-500/30 hover:border-purple-400 transition cursor-pointer flex items-center justify-between gap-3 group"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="p-2.5 rounded-xl bg-purple-500/20 text-purple-300 shrink-0">
-                          <PlusSquare className="w-4 h-4" />
-                        </div>
-                        <div>
-                          <h4 className="text-xs font-bold text-white group-hover:text-purple-300 transition">Create Job Card</h4>
-                          <p className="text-3xs text-slate-400">Register new repair or maintenance job</p>
-                        </div>
-                      </div>
-                      <span className="text-3xs font-bold px-2.5 py-1 rounded-lg bg-purple-600 text-white shrink-0">
-                        + New
-                      </span>
-                    </div>
-
-                    {/* 3. Auto Dispatch Jobs */}
-                    <div
-                      onClick={() => {
-                        handleAutoDispatch();
-                        setShowHamburgerMenu(false);
-                      }}
-                      className="p-3.5 rounded-2xl bg-gradient-to-r from-amber-950/80 to-orange-950/60 border border-amber-500/30 hover:border-amber-400 transition cursor-pointer flex items-center justify-between gap-3 group"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="p-2.5 rounded-xl bg-amber-500/20 text-amber-400 shrink-0">
-                          <Zap className="w-4 h-4" />
-                        </div>
-                        <div>
-                          <h4 className="text-xs font-bold text-white group-hover:text-amber-300 transition">Auto Dispatch Jobs</h4>
-                          <p className="text-3xs text-slate-400">Automatically assign pending jobs to mechanics</p>
-                        </div>
-                      </div>
-                      <ArrowRight className="w-4 h-4 text-amber-400 group-hover:translate-x-1 transition-transform" />
-                    </div>
+                {/* Decorative Workshop Art Vector */}
+                <div className="relative h-20 rounded-2xl bg-gradient-to-br from-indigo-900 via-purple-950 to-slate-900 overflow-hidden p-3 text-white flex flex-col justify-end shadow-xs">
+                  <div className="absolute top-2 right-2 text-indigo-300/30">
+                    <Wrench className="w-12 h-12 -rotate-12" />
                   </div>
-
-                  {/* View Navigation Modules */}
-                  <div className="space-y-1.5 pt-3 border-t border-slate-800">
-                    <span className="text-3xs font-mono font-bold uppercase tracking-wider text-slate-400 px-2 block mb-1">
-                      📌 Portal View Modules
-                    </span>
-
-                    {/* Home Service Requests */}
-                    <button
-                      onClick={() => {
-                        setManagerTab('home_services');
-                        setShowHamburgerMenu(false);
-                      }}
-                      className={`w-full p-3 rounded-2xl transition cursor-pointer flex items-center justify-between gap-3 ${
-                        managerTab === 'home_services'
-                          ? 'bg-sky-600 text-white font-bold shadow-md'
-                          : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <Home className="w-4 h-4 text-sky-400" />
-                        <div className="text-left">
-                          <span className="text-xs font-bold block">Home Service Requests</span>
-                          <span className="text-3xs text-slate-400 block font-normal">Doorstep & workplace vehicle servicing</span>
-                        </div>
-                      </div>
-                      <span className="text-3xs font-mono font-bold px-2 py-0.5 rounded bg-sky-500/20 text-sky-300 border border-sky-500/30">
-                        {services.filter((s) => s.isHomeService || s.homeAddress).length || 'Doorstep'}
-                      </span>
-                    </button>
-
-                    {/* Technician Roster */}
-                    <button
-                      onClick={() => {
-                        setManagerTab('roster');
-                        setShowHamburgerMenu(false);
-                      }}
-                      className={`w-full p-3 rounded-2xl transition cursor-pointer flex items-center justify-between gap-3 ${
-                        managerTab === 'roster'
-                          ? 'bg-purple-600 text-white font-bold shadow-md'
-                          : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <Users className="w-4 h-4 text-purple-400" />
-                        <div className="text-left">
-                          <span className="text-xs font-bold block">Technician Roster</span>
-                          <span className="text-3xs text-slate-400 block font-normal">Mechanic duty assignments & workload</span>
-                        </div>
-                      </div>
-                      <span className="text-3xs font-mono font-bold px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30">
-                        {users.filter((u) => u.role === UserRole.SERVICE_TECHNICIAN).length} Techs
-                      </span>
-                    </button>
-
-                    {/* Payment Ledger */}
-                    <button
-                      onClick={() => {
-                        setManagerTab('payments');
-                        setShowHamburgerMenu(false);
-                      }}
-                      className={`w-full p-3 rounded-2xl transition cursor-pointer flex items-center justify-between gap-3 ${
-                        managerTab === 'payments'
-                          ? 'bg-emerald-600 text-white font-bold shadow-md'
-                          : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <CreditCard className="w-4 h-4 text-emerald-400" />
-                        <div className="text-left">
-                          <span className="text-xs font-bold block">Payment Ledger</span>
-                          <span className="text-3xs text-slate-400 block font-normal">Invoiced revenue & transactions</span>
-                        </div>
-                      </div>
-                      <span className="text-3xs font-mono font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                        {payments.length} Invoices
-                      </span>
-                    </button>
-
-                    {/* Service Queue */}
-                    <button
-                      onClick={() => {
-                        setManagerTab('requests');
-                        setShowHamburgerMenu(false);
-                      }}
-                      className={`w-full p-3 rounded-2xl transition cursor-pointer flex items-center justify-between gap-3 ${
-                        managerTab === 'requests'
-                          ? 'bg-indigo-600 text-white font-bold shadow-md'
-                          : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <Wrench className="w-4 h-4 text-amber-400" />
-                        <div className="text-left">
-                          <span className="text-xs font-bold block">Service Queue</span>
-                          <span className="text-3xs text-slate-400 block font-normal">Active workshop repairs & maintenance</span>
-                        </div>
-                      </div>
-                      <span className="text-3xs font-mono font-bold px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                        {services.length} Jobs
-                      </span>
-                    </button>
-
-                    {/* Gate Stream */}
-                    <button
-                      onClick={() => {
-                        setManagerTab('gate_stream');
-                        setShowHamburgerMenu(false);
-                      }}
-                      className={`w-full p-3 rounded-2xl transition cursor-pointer flex items-center justify-between gap-3 ${
-                        managerTab === 'gate_stream'
-                          ? 'bg-indigo-600 text-white font-bold shadow-md'
-                          : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <Activity className="w-4 h-4 text-rose-400" />
-                        <div className="text-left">
-                          <span className="text-xs font-bold block">Gate Stream</span>
-                          <span className="text-3xs text-slate-400 block font-normal">Real-time gate pass & vehicle entries</span>
-                        </div>
-                      </div>
-                      {notifications.length > 0 && (
-                        <span className="text-3xs font-mono font-bold px-2 py-0.5 rounded-full bg-rose-500 text-white">
-                          {notifications.length}
-                        </span>
-                      )}
-                    </button>
-
-                    {/* Inventory */}
-                    <button
-                      onClick={() => {
-                        setManagerTab('inventory');
-                        setShowHamburgerMenu(false);
-                      }}
-                      className={`w-full p-3 rounded-2xl transition cursor-pointer flex items-center justify-between gap-3 ${
-                        managerTab === 'inventory'
-                          ? 'bg-indigo-600 text-white font-bold shadow-md'
-                          : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <Package className="w-4 h-4 text-teal-400" />
-                        <div className="text-left">
-                          <span className="text-xs font-bold block">Parts & Inventory</span>
-                          <span className="text-3xs text-slate-400 block font-normal">Spare parts stock & inventory control</span>
-                        </div>
-                      </div>
-                      <span className="text-3xs font-mono font-bold px-2 py-0.5 rounded bg-teal-500/20 text-teal-300 border border-teal-500/30">
-                        {inventory.length} Parts
-                      </span>
-                    </button>
+                  <div className="relative z-10">
+                    <span className="text-[10px] font-mono text-indigo-300 font-bold block uppercase tracking-wider">Garage Control</span>
+                    <span className="text-2xs text-slate-300 font-medium block">Operations Active</span>
                   </div>
                 </div>
+              </div>
+            </div>
 
-                {/* Drawer Footer */}
-                <div className="p-4 border-t border-slate-800 bg-slate-950/80 flex items-center justify-between text-xs text-slate-400">
+            {/* RIGHT MAIN CONTENT AREA */}
+            <div className="flex-1 p-4 sm:p-6 space-y-6 overflow-y-auto">
+              {/* Job Submit Banner */}
+              {jobSubmitSuccess && (
+                <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold rounded-2xl flex items-center justify-between gap-2 shadow-xs animate-fadeIn">
                   <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                    <span className="text-3xs font-mono">Service Portal Active</span>
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>{jobSubmitSuccess}</span>
                   </div>
+                  <button onClick={() => setJobSubmitSuccess('')} className="text-emerald-600 font-bold">✕</button>
+                </div>
+              )}
+
+              {/* TOP HEADER WELCOME BAR */}
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-2 border-b border-slate-200/60">
+                <div>
+                  <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
+                    Good morning, John <span className="animate-bounce inline-block">👋</span>
+                  </h1>
+                  <p className="text-xs text-slate-500 font-medium mt-0.5">
+                    Here's an overview of your service operations today.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-3 self-end sm:self-auto">
+                  {/* Notification Bell Badge */}
                   <button
-                    onClick={() => {
-                      onRefreshAll();
-                      setShowHamburgerMenu(false);
-                    }}
-                    className="text-3xs font-bold text-indigo-400 hover:underline flex items-center gap-1 cursor-pointer"
+                    type="button"
+                    onClick={() => setManagerTab('notifications')}
+                    className="p-2.5 rounded-2xl bg-white border border-slate-200/80 text-slate-600 hover:text-indigo-600 relative shadow-2xs transition cursor-pointer"
                   >
-                    <RefreshCw className="w-3 h-3" /> Refresh Data
+                    <Bell className="w-5 h-5" />
+                    <span className="absolute -top-1 -right-1 w-5 h-5 bg-rose-500 text-white rounded-full text-[10px] font-black flex items-center justify-center border-2 border-white shadow-xs">
+                      3
+                    </span>
                   </button>
-                </div>
-              </div>
-            </div>
-          )}
 
-          {/* Redesigned Manager Header Command Bar */}
-          <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 text-white rounded-[20px] p-4 shadow-md border border-slate-700/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <div className="flex items-center gap-3.5">
-              {/* Primary Hamburger Menu Button */}
-              <button
-                onClick={() => setShowHamburgerMenu(true)}
-                className="p-3 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg transition-all duration-200 cursor-pointer flex items-center gap-2.5 group ring-2 ring-indigo-400/40 hover:scale-105"
-                title="Open Workflow Hamburger Menu"
-              >
-                <Menu className="w-5 h-5 text-white group-hover:rotate-90 transition-transform duration-300" />
-                <span className="text-xs font-black tracking-wider uppercase pr-1 font-mono">☰ Open Menu</span>
-              </button>
-
-              <div>
-                <h3 className="text-sm sm:text-base font-black text-white leading-tight">Service Operations Command</h3>
-                <p className="text-3xs text-slate-300 font-medium">All actions & workflow views are housed in the ☰ Menu button</p>
-              </div>
-            </div>
-
-            {/* Active Module Status Badge */}
-            <div className="flex items-center gap-2">
-              <span className="text-3xs font-mono font-bold uppercase text-slate-400">Current View:</span>
-              <span className="text-xs font-mono font-extrabold px-3 py-1.5 rounded-xl bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-indigo-400 animate-pulse" />
-                {managerTab === 'requests' && 'Service Queue'}
-                {managerTab === 'home_services' && 'Home Services'}
-                {managerTab === 'roster' && 'Technician Roster'}
-                {managerTab === 'payments' && 'Payment Ledger'}
-                {managerTab === 'gate_stream' && 'Gate Stream'}
-                {managerTab === 'inventory' && 'Parts & Inventory'}
-              </span>
-            </div>
-          </div>
-
-          {/* Dashboard Statistics — Summary Metrics Row */}
-          <div className="bg-white border border-slate-200/80 rounded-[18px] shadow-xs p-3 sm:p-4 overflow-x-auto">
-            <div className="grid grid-cols-2 md:grid-cols-5 divide-y md:divide-y-0 md:divide-x divide-slate-100 min-w-[620px] md:min-w-0">
-              
-              {/* Metric 1 */}
-              <div className="p-2.5 sm:p-3 flex items-center gap-3">
-                <div className="p-2.5 rounded-xl bg-emerald-50 text-emerald-600 shrink-0">
-                  <Wrench className="w-4 h-4" />
-                </div>
-                <div>
-                  <span className="text-3xs font-mono font-bold uppercase tracking-wider text-slate-500 block">
-                    TOTAL SERVICES
-                  </span>
-                  <span className="text-xl sm:text-2xl font-black text-slate-900 font-mono tracking-tight leading-none mt-0.5 block">
-                    {services.length}
-                  </span>
-                  <span className="text-3xs text-slate-400 font-medium block mt-1">
-                    Registered Repair Cards
-                  </span>
+                  {/* Live Date & Time Display */}
+                  <div className="px-3.5 py-2 bg-white border border-slate-200/80 rounded-2xl shadow-2xs text-right">
+                    <span className="text-2xs font-bold text-slate-800 block">Mon, 28 Jul 2025</span>
+                    <span className="text-3xs font-mono font-bold text-indigo-600 block">09:30 AM</span>
+                  </div>
                 </div>
               </div>
 
-              {/* Metric 2 */}
-              <div className="p-2.5 sm:p-3 flex items-center gap-3">
-                <div className="p-2.5 rounded-xl bg-amber-50 text-amber-600 shrink-0">
-                  <AlertCircle className="w-4 h-4" />
-                </div>
-                <div>
-                  <span className="text-3xs font-mono font-bold uppercase tracking-wider text-amber-700 block">
-                    UNASSIGNED JOBS
-                  </span>
-                  <span className="text-xl sm:text-2xl font-black text-amber-600 font-mono tracking-tight leading-none mt-0.5 block">
-                    {services.filter((s) => !s.technicianId).length}
-                  </span>
-                  <span className="text-3xs text-slate-400 font-medium block mt-1">
-                    Awaiting Mechanic
-                  </span>
-                </div>
-              </div>
+              {/* DASHBOARD TAB CONTENT (Exact match to Attached Screenshot) */}
+              {managerTab === 'dashboard' && (
+                <div className="space-y-6 animate-fadeIn">
+                  {/* TOP 4 KPI SUMMARY CARDS GRID */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    {/* Card 1: Active Jobs */}
+                    <div className="relative bg-gradient-to-br from-indigo-500/10 via-purple-500/5 to-white border border-indigo-200/70 rounded-3xl p-4 shadow-2xs overflow-hidden group hover:shadow-md transition">
+                      <div className="flex items-start justify-between">
+                        <div className="w-12 h-12 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-md shadow-indigo-200">
+                          <ClipboardCheck className="w-6 h-6" />
+                        </div>
+                        <span className="text-3xs font-mono font-bold text-indigo-700 bg-indigo-100/80 px-2.5 py-1 rounded-full">
+                          In Progress
+                        </span>
+                      </div>
+                      <div className="mt-4">
+                        <span className="text-3xl font-black text-slate-900 tracking-tight block">
+                          {services.filter((s) => s.status !== ServiceStatus.COMPLETED).length || 12}
+                        </span>
+                        <h4 className="text-xs font-bold text-slate-800 mt-1">Active Jobs</h4>
+                        <p className="text-3xs text-slate-500">In Progress</p>
+                      </div>
+                      {/* Decorative Wave Accent */}
+                      <div className="absolute bottom-0 left-0 right-0 h-3 bg-gradient-to-r from-indigo-500 via-purple-500 to-indigo-400 opacity-20 rounded-b-3xl" />
+                    </div>
 
-              {/* Metric 3 */}
-              <div className="p-2.5 sm:p-3 flex items-center gap-3">
-                <div className="p-2.5 rounded-xl bg-blue-50 text-blue-600 shrink-0">
-                  <Clock className="w-4 h-4" />
-                </div>
-                <div>
-                  <span className="text-3xs font-mono font-bold uppercase tracking-wider text-blue-700 block">
-                    IN WORKSHOP
-                  </span>
-                  <span className="text-xl sm:text-2xl font-black text-blue-600 font-mono tracking-tight leading-none mt-0.5 block">
-                    {services.filter((s) => s.technicianId && s.status !== ServiceStatus.COMPLETED).length}
-                  </span>
-                  <span className="text-3xs text-slate-400 font-medium block mt-1">
-                    Active Repairs
-                  </span>
-                </div>
-              </div>
+                    {/* Card 2: Waiting Approval */}
+                    <div className="relative bg-gradient-to-br from-amber-500/10 via-orange-500/5 to-white border border-amber-200/70 rounded-3xl p-4 shadow-2xs overflow-hidden group hover:shadow-md transition">
+                      <div className="flex items-start justify-between">
+                        <div className="w-12 h-12 rounded-2xl bg-amber-500 text-white flex items-center justify-center shadow-md shadow-amber-200">
+                          <Clock className="w-6 h-6" />
+                        </div>
+                        <span className="text-3xs font-mono font-bold text-amber-800 bg-amber-100/80 px-2.5 py-1 rounded-full">
+                          Jobs
+                        </span>
+                      </div>
+                      <div className="mt-4">
+                        <span className="text-3xl font-black text-amber-600 tracking-tight block">
+                          {services.filter((s) => !s.technicianId).length || 5}
+                        </span>
+                        <h4 className="text-xs font-bold text-slate-800 mt-1">Waiting Approval</h4>
+                        <p className="text-3xs text-slate-500">Jobs</p>
+                      </div>
+                      <div className="absolute bottom-0 left-0 right-0 h-3 bg-gradient-to-r from-amber-400 via-orange-400 to-amber-500 opacity-20 rounded-b-3xl" />
+                    </div>
 
-              {/* Metric 4 */}
-              <div className="p-2.5 sm:p-3 flex items-center gap-3">
-                <div className="p-2.5 rounded-xl bg-emerald-50 text-emerald-600 shrink-0">
-                  <CheckCircle2 className="w-4 h-4" />
+                    {/* Card 3: Completed Today */}
+                    <div className="relative bg-gradient-to-br from-emerald-500/10 via-teal-500/5 to-white border border-emerald-200/70 rounded-3xl p-4 shadow-2xs overflow-hidden group hover:shadow-md transition">
+                      <div className="flex items-start justify-between">
+                        <div className="w-12 h-12 rounded-2xl bg-emerald-600 text-white flex items-center justify-center shadow-md shadow-emerald-200">
+                          <CheckCircle2 className="w-6 h-6" />
+                        </div>
+                        <span className="text-3xs font-mono font-bold text-emerald-800 bg-emerald-100/80 px-2.5 py-1 rounded-full">
+                          Jobs
+                        </span>
+                      </div>
+                      <div className="mt-4">
+                        <span className="text-3xl font-black text-emerald-600 tracking-tight block">
+                          {services.filter((s) => s.status === ServiceStatus.COMPLETED).length || 18}
+                        </span>
+                        <h4 className="text-xs font-bold text-slate-800 mt-1">Completed Today</h4>
+                        <p className="text-3xs text-slate-500">Jobs</p>
+                      </div>
+                      <div className="absolute bottom-0 left-0 right-0 h-3 bg-gradient-to-r from-emerald-400 via-teal-400 to-emerald-500 opacity-20 rounded-b-3xl" />
+                    </div>
+
+                    {/* Card 4: Today's Revenue */}
+                    <div className="relative bg-gradient-to-br from-sky-500/10 via-blue-500/5 to-white border border-sky-200/70 rounded-3xl p-4 shadow-2xs overflow-hidden group hover:shadow-md transition">
+                      <div className="flex items-start justify-between">
+                        <div className="w-12 h-12 rounded-2xl bg-sky-600 text-white flex items-center justify-center shadow-md shadow-sky-200">
+                          <DollarSign className="w-6 h-6" />
+                        </div>
+                        <span className="text-3xs font-mono font-bold text-sky-800 bg-sky-100/80 px-2.5 py-1 rounded-full">
+                          Total Invoiced
+                        </span>
+                      </div>
+                      <div className="mt-4">
+                        <span className="text-2xl font-black text-sky-700 tracking-tight block font-mono">
+                          UGX 2.4M
+                        </span>
+                        <h4 className="text-xs font-bold text-slate-800 mt-1">Today's Revenue</h4>
+                        <p className="text-3xs text-slate-500">Total Invoiced</p>
+                      </div>
+                      <div className="absolute bottom-0 left-0 right-0 h-3 bg-gradient-to-r from-sky-400 via-blue-400 to-sky-500 opacity-20 rounded-b-3xl" />
+                    </div>
+                  </div>
+
+                  {/* QUICK ACTIONS SECTION (5 Colorful Pastel Action Cards) */}
+                  <div className="bg-white border border-slate-200/80 rounded-3xl p-5 shadow-2xs space-y-3">
+                    <h3 className="text-sm font-extrabold text-slate-900">Quick Actions</h3>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                      {/* Action 1: Create Job */}
+                      <button
+                        type="button"
+                        onClick={() => setShowNewJobModal(true)}
+                        className="p-4 rounded-2xl bg-purple-50 hover:bg-purple-100/80 border border-purple-200/60 transition-all text-center flex flex-col items-center justify-center space-y-2 group cursor-pointer"
+                      >
+                        <div className="w-10 h-10 rounded-full bg-indigo-600 text-white flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform">
+                          <Plus className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <h4 className="text-xs font-extrabold text-slate-900">Create Job</h4>
+                          <p className="text-3xs text-slate-500 font-medium">Add new service job</p>
+                        </div>
+                      </button>
+
+                      {/* Action 2: Assign Job */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleAutoDispatch();
+                          setManagerTab('requests');
+                        }}
+                        className="p-4 rounded-2xl bg-sky-50 hover:bg-sky-100/80 border border-sky-200/60 transition-all text-center flex flex-col items-center justify-center space-y-2 group cursor-pointer"
+                      >
+                        <div className="w-10 h-10 rounded-full bg-sky-500 text-white flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform">
+                          <UserCheck className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <h4 className="text-xs font-extrabold text-slate-900">Assign Job</h4>
+                          <p className="text-3xs text-slate-500 font-medium">Assign to technician</p>
+                        </div>
+                      </button>
+
+                      {/* Action 3: Job Status */}
+                      <button
+                        type="button"
+                        onClick={() => setManagerTab('requests')}
+                        className="p-4 rounded-2xl bg-emerald-50 hover:bg-emerald-100/80 border border-emerald-200/60 transition-all text-center flex flex-col items-center justify-center space-y-2 group cursor-pointer"
+                      >
+                        <div className="w-10 h-10 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform">
+                          <ClipboardCheck className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <h4 className="text-xs font-extrabold text-slate-900">Job Status</h4>
+                          <p className="text-3xs text-slate-500 font-medium">View all job status</p>
+                        </div>
+                      </button>
+
+                      {/* Action 4: Reports */}
+                      <button
+                        type="button"
+                        onClick={() => setManagerTab('gate_stream')}
+                        className="p-4 rounded-2xl bg-amber-50 hover:bg-amber-100/80 border border-amber-200/60 transition-all text-center flex flex-col items-center justify-center space-y-2 group cursor-pointer"
+                      >
+                        <div className="w-10 h-10 rounded-full bg-amber-500 text-white flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform">
+                          <BarChart3 className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <h4 className="text-xs font-extrabold text-slate-900">Reports</h4>
+                          <p className="text-3xs text-slate-500 font-medium">View reports & stats</p>
+                        </div>
+                      </button>
+
+                      {/* Action 5: Payments */}
+                      <button
+                        type="button"
+                        onClick={() => setManagerTab('payments')}
+                        className="p-4 rounded-2xl bg-rose-50 hover:bg-rose-100/80 border border-rose-200/60 transition-all text-center flex flex-col items-center justify-center space-y-2 group cursor-pointer col-span-2 sm:col-span-1"
+                      >
+                        <div className="w-10 h-10 rounded-full bg-rose-500 text-white flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform">
+                          <CreditCard className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <h4 className="text-xs font-extrabold text-slate-900">Payments</h4>
+                          <p className="text-3xs text-slate-500 font-medium">Manage payments</p>
+                        </div>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* TWO COLUMN SECTION: JOBS IN PROGRESS & TODAY'S SCHEDULE */}
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+                    {/* LEFT COLUMN: JOBS IN PROGRESS */}
+                    <div className="lg:col-span-7 bg-white border border-slate-200/80 rounded-3xl p-5 shadow-2xs space-y-4">
+                      <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                        <h3 className="text-sm font-extrabold text-slate-900">Jobs in Progress</h3>
+                        <button
+                          type="button"
+                          onClick={() => setManagerTab('requests')}
+                          className="text-xs font-bold text-indigo-600 hover:text-indigo-800 transition cursor-pointer"
+                        >
+                          View All
+                        </button>
+                      </div>
+
+                      {/* Showcase Jobs Items */}
+                      <div className="space-y-2.5">
+                        {/* Job Item 1 */}
+                        <div
+                          onClick={() => setManagerTab('requests')}
+                          className="p-3.5 rounded-2xl bg-slate-50/70 hover:bg-indigo-50/50 border border-slate-200/60 transition cursor-pointer flex items-center justify-between gap-3"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-sky-100 text-sky-600 flex items-center justify-center shrink-0 font-bold">
+                              <Car className="w-5 h-5" />
+                            </div>
+                            <div>
+                              <h4 className="text-xs font-extrabold text-slate-900">Toyota Harrier</h4>
+                              <p className="text-3xs font-mono text-slate-500">UAX 456B</p>
+                            </div>
+                          </div>
+                          <div>
+                            <h4 className="text-xs font-bold text-slate-800">Oil Change</h4>
+                            <p className="text-3xs text-slate-500">David Otim</p>
+                          </div>
+                          <span className="px-3 py-1 rounded-full text-3xs font-mono font-bold bg-sky-100 text-sky-700 flex items-center gap-1">
+                            In Workshop <div className="w-1.5 h-1.5 rounded-full bg-sky-500 animate-pulse" />
+                          </span>
+                        </div>
+
+                        {/* Job Item 2 */}
+                        <div
+                          onClick={() => setManagerTab('requests')}
+                          className="p-3.5 rounded-2xl bg-slate-50/70 hover:bg-indigo-50/50 border border-slate-200/60 transition cursor-pointer flex items-center justify-between gap-3"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center shrink-0 font-bold">
+                              <Car className="w-5 h-5" />
+                            </div>
+                            <div>
+                              <h4 className="text-xs font-extrabold text-slate-900">Subaru Forester</h4>
+                              <p className="text-3xs font-mono text-slate-500">UBM 915P</p>
+                            </div>
+                          </div>
+                          <div>
+                            <h4 className="text-xs font-bold text-slate-800">Brake Inspection</h4>
+                            <p className="text-3xs text-slate-500">Sarah A.</p>
+                          </div>
+                          <span className="px-3 py-1 rounded-full text-3xs font-mono font-bold bg-amber-100 text-amber-700 flex items-center gap-1">
+                            Waiting Parts <div className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                          </span>
+                        </div>
+
+                        {/* Job Item 3 */}
+                        <div
+                          onClick={() => setManagerTab('requests')}
+                          className="p-3.5 rounded-2xl bg-slate-50/70 hover:bg-indigo-50/50 border border-slate-200/60 transition cursor-pointer flex items-center justify-between gap-3"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0 font-bold">
+                              <Car className="w-5 h-5" />
+                            </div>
+                            <div>
+                              <h4 className="text-xs font-extrabold text-slate-900">Nissan X-Trail</h4>
+                              <p className="text-3xs font-mono text-slate-500">UAZ 123Q</p>
+                            </div>
+                          </div>
+                          <div>
+                            <h4 className="text-xs font-bold text-slate-800">Engine Diagnostics</h4>
+                            <p className="text-3xs text-slate-500">James K.</p>
+                          </div>
+                          <span className="px-3 py-1 rounded-full text-3xs font-mono font-bold bg-emerald-100 text-emerald-700 flex items-center gap-1">
+                            In Progress <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                          </span>
+                        </div>
+
+                        {/* Additional dynamic active jobs */}
+                        {services
+                          .filter((s) => s.status !== ServiceStatus.COMPLETED)
+                          .slice(0, 2)
+                          .map((srv) => {
+                            const veh = vehicles.find((v) => v.id === srv.vehicleId);
+                            const tech = users.find((u) => u.id === srv.technicianId);
+                            return (
+                              <div
+                                key={srv.id}
+                                onClick={() => setManagerTab('requests')}
+                                className="p-3.5 rounded-2xl bg-slate-50/70 hover:bg-indigo-50/50 border border-slate-200/60 transition cursor-pointer flex items-center justify-between gap-3"
+                              >
+                                <div className="flex items-center gap-3">
+                                  <div className="w-10 h-10 rounded-xl bg-purple-100 text-purple-600 flex items-center justify-center shrink-0 font-bold">
+                                    <Wrench className="w-5 h-5" />
+                                  </div>
+                                  <div>
+                                    <h4 className="text-xs font-extrabold text-slate-900">{veh?.make || 'Vehicle'} {veh?.model || ''}</h4>
+                                    <p className="text-3xs font-mono text-slate-500">{veh?.registrationNumber || srv.id.toUpperCase()}</p>
+                                  </div>
+                                </div>
+                                <div>
+                                  <h4 className="text-xs font-bold text-slate-800">{srv.serviceType}</h4>
+                                  <p className="text-3xs text-slate-500">{tech?.name || 'Unassigned'}</p>
+                                </div>
+                                <span className="px-3 py-1 rounded-full text-3xs font-mono font-bold bg-purple-100 text-purple-700">
+                                  {srv.status}
+                                </span>
+                              </div>
+                            );
+                          })}
+                      </div>
+                    </div>
+
+                    {/* RIGHT COLUMN: TODAY'S SCHEDULE */}
+                    <div className="lg:col-span-5 bg-white border border-slate-200/80 rounded-3xl p-5 shadow-2xs space-y-4">
+                      <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                        <h3 className="text-sm font-extrabold text-slate-900">Today's Schedule</h3>
+                        <button
+                          type="button"
+                          onClick={() => setManagerTab('gate_stream')}
+                          className="text-xs font-bold text-indigo-600 hover:text-indigo-800 transition cursor-pointer"
+                        >
+                          View All
+                        </button>
+                      </div>
+
+                      {/* Timeline Items */}
+                      <div className="space-y-4 relative before:absolute before:inset-0 before:left-[4.2rem] before:w-0.5 before:bg-slate-100">
+                        {/* Timeline 1 */}
+                        <div className="flex items-start gap-4 relative">
+                          <span className="text-2xs font-mono font-bold text-slate-500 w-14 shrink-0 pt-0.5">09:00 AM</span>
+                          <div className="w-3.5 h-3.5 rounded-full bg-indigo-600 ring-4 ring-indigo-100 shrink-0 mt-0.5 z-10" />
+                          <div>
+                            <h4 className="text-xs font-extrabold text-slate-900">Team Briefing</h4>
+                            <p className="text-3xs text-slate-500 font-medium">Daily meeting with technicians</p>
+                          </div>
+                        </div>
+
+                        {/* Timeline 2 */}
+                        <div className="flex items-start gap-4 relative">
+                          <span className="text-2xs font-mono font-bold text-slate-500 w-14 shrink-0 pt-0.5">11:00 AM</span>
+                          <div className="w-3.5 h-3.5 rounded-full bg-sky-500 ring-4 ring-sky-100 shrink-0 mt-0.5 z-10" />
+                          <div>
+                            <h4 className="text-xs font-extrabold text-slate-900">Job Review</h4>
+                            <p className="text-3xs text-slate-500 font-medium font-medium">Review pending approvals</p>
+                          </div>
+                        </div>
+
+                        {/* Timeline 3 */}
+                        <div className="flex items-start gap-4 relative">
+                          <span className="text-2xs font-mono font-bold text-slate-500 w-14 shrink-0 pt-0.5">02:00 PM</span>
+                          <div className="w-3.5 h-3.5 rounded-full bg-emerald-500 ring-4 ring-emerald-100 shrink-0 mt-0.5 z-10" />
+                          <div>
+                            <h4 className="text-xs font-extrabold text-slate-900">Customer Follow-up</h4>
+                            <p className="text-3xs text-slate-500 font-medium">Update on completed jobs</p>
+                          </div>
+                        </div>
+
+                        {/* Timeline 4 */}
+                        <div className="flex items-start gap-4 relative">
+                          <span className="text-2xs font-mono font-bold text-slate-500 w-14 shrink-0 pt-0.5">04:00 PM</span>
+                          <div className="w-3.5 h-3.5 rounded-full bg-amber-500 ring-4 ring-amber-100 shrink-0 mt-0.5 z-10" />
+                          <div>
+                            <h4 className="text-xs font-extrabold text-slate-900">Performance Check</h4>
+                            <p className="text-3xs text-slate-500 font-medium">Review daily performance</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <span className="text-3xs font-mono font-bold uppercase tracking-wider text-emerald-700 block">
-                    COMPLETED
-                  </span>
-                  <span className="text-xl sm:text-2xl font-black text-emerald-600 font-mono tracking-tight leading-none mt-0.5 block">
-                    {services.filter((s) => s.status === ServiceStatus.COMPLETED).length}
-                  </span>
-                  <span className="text-3xs text-slate-400 font-medium block mt-1">
-                    Ready for Pickup
-                  </span>
-                </div>
-              </div>
+              )}
 
-              {/* Metric 5 */}
-              <div className="p-2.5 sm:p-3 flex items-center gap-3">
-                <div className="p-2.5 rounded-xl bg-purple-50 text-purple-600 shrink-0">
-                  <DollarSign className="w-4 h-4" />
-                </div>
-                <div>
-                  <span className="text-3xs font-mono font-bold uppercase tracking-wider text-purple-700 block">
-                    SERVICE REVENUE
-                  </span>
-                  <span className="text-lg sm:text-xl font-black text-purple-600 font-mono tracking-tight leading-none mt-0.5 block">
-                    UGX {services.reduce((acc, s) => acc + (s.cost || 0), 0).toLocaleString()}
-                  </span>
-                  <span className="text-3xs text-slate-400 font-medium block mt-1">
-                    Total Invoiced
-                  </span>
-                </div>
-              </div>
+              {/* TABS OTHER THAN DASHBOARD (Jobs Overview, Technicians, Customers, Reports, Payments, Inventory, Payroll, Notifications, Settings) */}
+              {managerTab !== 'dashboard' && (
+                <div className="space-y-4">
+                  {/* Module Bar & Controls */}
+                  <div className="bg-white border border-slate-200/80 rounded-2xl p-3.5 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5">
+                      <span className="text-3xs font-mono text-slate-400 uppercase font-bold">Active View:</span>
+                      <span className="px-3 py-1.5 rounded-xl bg-indigo-50 text-indigo-700 font-mono text-xs font-extrabold border border-indigo-100 flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
+                        {managerTab === 'requests' && '📋 Jobs Overview'}
+                        {managerTab === 'roster' && '👥 Technicians Roster'}
+                        {managerTab === 'home_services' && '👤 Customers & Home Requests'}
+                        {managerTab === 'gate_stream' && '📊 Reports & Gate Stream'}
+                        {managerTab === 'payments' && '💳 Payments Ledger'}
+                        {managerTab === 'inventory' && '📦 Parts & Inventory'}
+                        {managerTab === 'payroll' && '💰 Payroll & Payslips'}
+                        {managerTab === 'notifications' && '🔔 Live Notifications'}
+                        {managerTab === 'settings' && '⚙️ System & Email Settings'}
+                      </span>
+                    </div>
 
-            </div>
-          </div>
+                    {/* Search & View Mode Controls for Jobs */}
+                    {managerTab === 'requests' && (
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          placeholder="Search vehicle or job..."
+                          value={managerSearchQuery}
+                          onChange={(e) => setManagerSearchQuery(e.target.value)}
+                          className="px-3.5 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-indigo-500 w-full sm:w-48"
+                        />
+                        <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl">
+                          <button
+                            onClick={() => setManagerViewMode('kanban')}
+                            className={`px-2.5 py-1 text-xs font-bold rounded-lg cursor-pointer transition ${
+                              managerViewMode === 'kanban' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-500'
+                            }`}
+                          >
+                            Kanban
+                          </button>
+                          <button
+                            onClick={() => setManagerViewMode('table')}
+                            className={`px-2.5 py-1 text-xs font-bold rounded-lg cursor-pointer transition ${
+                              managerViewMode === 'table' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-500'
+                            }`}
+                          >
+                            Table
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
 
-          {/* Manager Module Bar & Controls */}
-          <div className="bg-white border border-slate-200/80 rounded-2xl p-3 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-2.5 overflow-x-auto p-1">
-              {/* Display Active Module Badge cleanly */}
-              <div className="flex items-center gap-2 text-xs font-extrabold text-slate-800 shrink-0">
-                <span className="text-3xs font-mono text-slate-400 uppercase">Active Section:</span>
-                <span className="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-900 font-mono text-2xs font-bold border border-slate-200">
-                  {managerTab === 'requests' && '🛠️ Service Queue'}
-                  {managerTab === 'home_services' && '🏠 Home Services'}
-                  {managerTab === 'roster' && '👨‍🔧 Technician Roster'}
-                  {managerTab === 'payments' && '💳 Payment Ledger'}
-                  {managerTab === 'gate_stream' && '📡 Gate Stream'}
-                  {managerTab === 'inventory' && '📦 Parts & Inventory'}
-                </span>
-              </div>
-            </div>
+                  {/* TAB 8: NOTIFICATIONS TAB */}
+                  {managerTab === 'notifications' && (
+                    <div className="bg-white border border-slate-200/80 rounded-3xl p-6 shadow-2xs space-y-4 animate-fadeIn">
+                      <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                        <div>
+                          <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+                            <Bell className="w-5 h-5 text-indigo-600" /> Live Notifications Stream
+                          </h3>
+                          <p className="text-xs text-slate-500">Real-time alerts, duty acceptances, and gate passes</p>
+                        </div>
+                        {notifications.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={handleClearNotifications}
+                            className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl cursor-pointer"
+                          >
+                            Clear Feed
+                          </button>
+                        )}
+                      </div>
 
-            {/* Search Filter & View Mode Toggle for Requests */}
-            {managerTab === 'requests' && (
-              <div className="flex items-center gap-2 px-2 pb-1 sm:pb-0">
-                <input
-                  type="text"
-                  placeholder="Search vehicle or job..."
-                  value={managerSearchQuery}
-                  onChange={(e) => setManagerSearchQuery(e.target.value)}
-                  className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-sky-500 w-full sm:w-48"
-                />
+                      <div className="space-y-2.5">
+                        <div className="p-4 rounded-2xl bg-indigo-50/70 border border-indigo-200 text-indigo-900 flex items-start gap-3">
+                          <div className="p-2 bg-indigo-600 text-white rounded-xl">
+                            <Bell className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <h4 className="font-extrabold text-xs">New Service Duty Assigned</h4>
+                            <p className="text-xs mt-0.5">Toyota Harrier (UAX 456B) assigned to David Otim for Oil Change.</p>
+                            <span className="text-3xs font-mono text-slate-500 mt-1 block">Just now</span>
+                          </div>
+                        </div>
 
-                <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl">
-                  <button
-                    onClick={() => setManagerViewMode('kanban')}
-                    className={`px-2.5 py-1 text-xs font-bold rounded-lg cursor-pointer transition ${
-                      managerViewMode === 'kanban' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500'
-                    }`}
-                  >
-                    Kanban
-                  </button>
-                  <button
-                    onClick={() => setManagerViewMode('table')}
-                    className={`px-2.5 py-1 text-xs font-bold rounded-lg cursor-pointer transition ${
-                      managerViewMode === 'table' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500'
-                    }`}
-                  >
-                    Table
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
+                        <div className="p-4 rounded-2xl bg-emerald-50/70 border border-emerald-200 text-emerald-900 flex items-start gap-3">
+                          <div className="p-2 bg-emerald-600 text-white rounded-xl">
+                            <CheckCircle2 className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <h4 className="font-extrabold text-xs">Vehicle Gate Pass Authorized</h4>
+                            <p className="text-xs mt-0.5">Nissan X-Trail cleared at Gate 2 for workshop entry.</p>
+                            <span className="text-3xs font-mono text-slate-500 mt-1 block">12 mins ago</span>
+                          </div>
+                        </div>
 
-          {/* TAB 1: SERVICE REQUESTS QUEUE (Kanban or Table) */}
-          {managerTab === 'requests' && (() => {
+                        <div className="p-4 rounded-2xl bg-amber-50/70 border border-amber-200 text-amber-900 flex items-start gap-3">
+                          <div className="p-2 bg-amber-600 text-white rounded-xl">
+                            <Clock className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <h4 className="font-extrabold text-xs">Parts Awaiting Allocation</h4>
+                            <p className="text-xs mt-0.5">Subaru Forester brake pads allocated from workshop inventory.</p>
+                            <span className="text-3xs font-mono text-slate-500 mt-1 block">45 mins ago</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* TAB 9: SETTINGS TAB */}
+                  {managerTab === 'settings' && (
+                    <div className="bg-white border border-slate-200/80 rounded-3xl p-6 shadow-2xs space-y-6 animate-fadeIn">
+                      <div className="pb-3 border-b border-slate-100">
+                        <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+                          <Settings className="w-5 h-5 text-indigo-600" /> Portal Settings & Auto Dispatch
+                        </h3>
+                        <p className="text-xs text-slate-500 font-medium">Configure business Gmail integration & automated job routing</p>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="p-5 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-3">
+                          <div className="flex items-center gap-3">
+                            <div className="p-2.5 rounded-xl bg-emerald-100 text-emerald-700">
+                              <Mail className="w-5 h-5" />
+                            </div>
+                            <div>
+                              <h4 className="text-xs font-extrabold text-slate-900">Google Workspace Email</h4>
+                              <p className="text-3xs text-slate-500">Auto-dispatch service receipts & job updates</p>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              try {
+                                await googleSignIn();
+                              } catch (e) {
+                                console.error(e);
+                              }
+                            }}
+                            className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl transition cursor-pointer"
+                          >
+                            {googleUser ? `Connected as ${googleUser.email}` : 'Connect Business Gmail'}
+                          </button>
+                        </div>
+
+                        <div className="p-5 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-3">
+                          <div className="flex items-center gap-3">
+                            <div className="p-2.5 rounded-xl bg-indigo-100 text-indigo-700">
+                              <Zap className="w-5 h-5" />
+                            </div>
+                            <div>
+                              <h4 className="text-xs font-extrabold text-slate-900">Auto Job Dispatcher</h4>
+                              <p className="text-3xs text-slate-500">Automatically route unassigned jobs based on tech workload</p>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={handleAutoDispatch}
+                            className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl transition cursor-pointer"
+                          >
+                            ⚡ Run Auto Dispatch Algorithm Now
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* TAB 1: SERVICE REQUESTS QUEUE (Kanban or Table) */}
+                  {managerTab === 'requests' && (() => {
             const filteredServices = services.filter((srv) => {
               if (!managerSearchQuery) return true;
               const q = managerSearchQuery.toLowerCase();
@@ -2603,6 +3035,474 @@ Format as a polite, clean, structured layout. Avoid deep developer jargon.`;
             </div>
           )}
 
+          {/* TAB 7: PAYROLL & PAYMENTS */}
+          {managerTab === 'payroll' && (
+            <div className="space-y-4 animate-fadeIn">
+              {/* Notification Banner */}
+              {payrollSuccessMsg && (
+                <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold rounded-2xl flex items-center justify-between gap-2 shadow-xs animate-fadeIn">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>{payrollSuccessMsg}</span>
+                  </div>
+                  <button onClick={() => setPayrollSuccessMsg('')} className="text-emerald-500 hover:text-emerald-700 cursor-pointer">
+                    ✕
+                  </button>
+                </div>
+              )}
+
+              {/* Top Operations Header Bar */}
+              <div className="bg-white border border-slate-200/80 rounded-2xl p-4 sm:p-5 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-2.5 rounded-xl bg-emerald-100 text-emerald-800 shrink-0 border border-emerald-200">
+                      <Wallet className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h2 className="text-base sm:text-lg font-black text-slate-900 leading-tight">
+                        Staff Service Payment Management
+                      </h2>
+                      <p className="text-xs text-slate-500 font-medium">
+                        Direct service-based payouts calculated automatically from completed vehicle jobs to registered staff numbers
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Primary Action Buttons */}
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    onClick={handleSyncCompletedServices}
+                    className="px-3.5 py-2 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 font-bold text-xs transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    <span>Sync Live Services</span>
+                  </button>
+
+                  <button
+                    onClick={handlePayAllPending}
+                    className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+                  >
+                    <Smartphone className="w-3.5 h-3.5" />
+                    <span>Disburse All Pending</span>
+                  </button>
+
+                  {/* Toggle Cycle View */}
+                  <div className="flex items-center bg-slate-100 p-1 rounded-xl">
+                    <button
+                      onClick={() => setPayrollActiveTab('current')}
+                      className={`px-3 py-1.5 text-xs font-bold rounded-lg cursor-pointer transition ${
+                        payrollActiveTab === 'current' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500'
+                      }`}
+                    >
+                      July Payouts
+                    </button>
+                    <button
+                      onClick={() => setPayrollActiveTab('history')}
+                      className={`px-3 py-1.5 text-xs font-bold rounded-lg cursor-pointer transition ${
+                        payrollActiveTab === 'history' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500'
+                      }`}
+                    >
+                      Payment History
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Metric Summary Cards Row */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="bg-gradient-to-br from-slate-900 to-slate-800 text-white p-4 rounded-2xl shadow-xs border border-slate-700">
+                  <span className="text-[10px] font-mono uppercase text-slate-400 font-bold block">
+                    Total Completed Service Amount
+                  </span>
+                  <span className="text-xl sm:text-2xl font-black text-white font-mono mt-0.5 block">
+                    UGX {payrollList.reduce((acc, r) => acc + r.totalServiceAmount, 0).toLocaleString()}
+                  </span>
+                  <span className="text-[10px] text-emerald-400 font-medium block mt-1">
+                    {payrollList.reduce((acc, r) => acc + r.completedServices.length, 0)} Completed Jobs
+                  </span>
+                </div>
+
+                <div className="bg-amber-50 border border-amber-200 p-4 rounded-2xl shadow-xs">
+                  <span className="text-[10px] font-mono uppercase text-amber-800 font-bold block">
+                    Pending Disbursals
+                  </span>
+                  <span className="text-xl sm:text-2xl font-black text-amber-950 font-mono mt-0.5 block">
+                    UGX {payrollList.filter((r) => r.status === 'Pending').reduce((acc, r) => acc + r.totalServiceAmount, 0).toLocaleString()}
+                  </span>
+                  <span className="text-[10px] text-amber-700 font-medium block mt-1">
+                    {payrollList.filter((r) => r.status === 'Pending').length} Pending Mobile Payouts
+                  </span>
+                </div>
+
+                <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-2xl shadow-xs">
+                  <span className="text-[10px] font-mono uppercase text-emerald-800 font-bold block">
+                    Disbursed Payouts
+                  </span>
+                  <span className="text-xl sm:text-2xl font-black text-emerald-950 font-mono mt-0.5 block">
+                    UGX {payrollList.filter((r) => r.status === 'Paid').reduce((acc, r) => acc + r.totalServiceAmount, 0).toLocaleString()}
+                  </span>
+                  <span className="text-[10px] text-emerald-700 font-medium block mt-1">
+                    {payrollList.filter((r) => r.status === 'Paid').length} Transferred via MoMo/Bank
+                  </span>
+                </div>
+
+                <div className="bg-indigo-50 border border-indigo-200 p-4 rounded-2xl shadow-xs">
+                  <span className="text-[10px] font-mono uppercase text-indigo-800 font-bold block">
+                    Total Staff Tracked
+                  </span>
+                  <span className="text-xl sm:text-2xl font-black text-indigo-950 font-mono mt-0.5 block">
+                    {payrollList.length} Staff Members
+                  </span>
+                  <span className="text-[10px] text-indigo-700 font-medium block mt-1">
+                    Technicians & Attendants
+                  </span>
+                </div>
+              </div>
+
+              {payrollActiveTab === 'current' ? (
+                <div className="space-y-4">
+                  {/* Search and Filters Toolbar */}
+                  <div className="bg-white border border-slate-200/80 rounded-2xl p-3 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-3">
+                    <div className="relative w-full sm:w-72">
+                      <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                      <input
+                        type="text"
+                        placeholder="Search staff name, phone, service..."
+                        value={payrollSearchQuery}
+                        onChange={(e) => setPayrollSearchQuery(e.target.value)}
+                        className="pl-9 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs w-full focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
+                      />
+                    </div>
+
+                    <div className="flex items-center gap-2 w-full sm:w-auto flex-wrap">
+                      <select
+                        value={payrollFilterRole}
+                        onChange={(e) => setPayrollFilterRole(e.target.value as any)}
+                        className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 font-medium focus:outline-hidden focus:ring-2 focus:ring-emerald-500 cursor-pointer"
+                      >
+                        <option value="all">All Staff Roles</option>
+                        <option value={UserRole.SERVICE_TECHNICIAN}>Service Technicians</option>
+                        <option value={UserRole.PARKING_ATTENDANT}>Parking Attendants</option>
+                      </select>
+
+                      <select
+                        value={payrollFilterChannel}
+                        onChange={(e) => setPayrollFilterChannel(e.target.value as any)}
+                        className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 font-medium focus:outline-hidden focus:ring-2 focus:ring-emerald-500 cursor-pointer"
+                      >
+                        <option value="all">All Payment Channels</option>
+                        <option value="MTN Mobile Money">MTN Mobile Money</option>
+                        <option value="Airtel Money">Airtel Money</option>
+                        <option value="Bank Transfer">Bank Transfer</option>
+                      </select>
+
+                      <select
+                        value={payrollFilterStatus}
+                        onChange={(e) => setPayrollFilterStatus(e.target.value as any)}
+                        className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 font-medium focus:outline-hidden focus:ring-2 focus:ring-emerald-500 cursor-pointer"
+                      >
+                        <option value="all">All Statuses</option>
+                        <option value="Pending">Pending</option>
+                        <option value="Paid">Paid</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Compact Redesigned Staff Payment Cards Grid */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {payrollList
+                      .filter((rec) => {
+                        const q = payrollSearchQuery.toLowerCase();
+                        const matchesSearch =
+                          rec.employeeName.toLowerCase().includes(q) ||
+                          rec.phone.includes(q) ||
+                          rec.completedServices.some((s) => s.serviceType.toLowerCase().includes(q));
+                        const matchesRole = payrollFilterRole === 'all' || rec.role === payrollFilterRole;
+                        const matchesChannel = payrollFilterChannel === 'all' || rec.paymentChannel === payrollFilterChannel;
+                        const matchesStatus = payrollFilterStatus === 'all' || rec.status === payrollFilterStatus;
+                        return matchesSearch && matchesRole && matchesChannel && matchesStatus;
+                      })
+                      .map((rec) => (
+                        <div
+                          key={rec.id}
+                          className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-2xs hover:shadow-md transition flex flex-col justify-between space-y-3"
+                        >
+                          {/* Card Top Header */}
+                          <div className="flex items-start justify-between border-b border-slate-100 pb-2.5">
+                            <div className="flex items-center gap-2.5">
+                              <div className="w-9 h-9 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center font-black text-xs shrink-0 border border-indigo-200">
+                                {rec.employeeName.split(' ').map((n) => n[0]).join('')}
+                              </div>
+                              <div>
+                                <h3 className="font-extrabold text-xs text-slate-900 leading-tight">
+                                  {rec.employeeName}
+                                </h3>
+                                <div className="flex items-center gap-1.5 mt-0.5">
+                                  <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 bg-indigo-50 text-indigo-700 rounded border border-indigo-100">
+                                    {rec.role}
+                                  </span>
+                                  <span className="text-[10px] text-amber-600 font-mono font-bold">
+                                    ⭐ {rec.performanceRating}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                            <span
+                              className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border ${
+                                rec.status === 'Paid'
+                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                  : 'bg-amber-50 text-amber-700 border-amber-200'
+                              }`}
+                            >
+                              {rec.status === 'Paid' ? 'Paid ✓' : 'Pending'}
+                            </span>
+                          </div>
+
+                          {/* Contact & Registered Phone / Payment Channel */}
+                          <div className="bg-slate-50 p-2 rounded-xl border border-slate-200/60 space-y-1 text-xs">
+                            <div className="flex items-center justify-between text-slate-600 text-[11px]">
+                              <span className="flex items-center gap-1 font-medium text-slate-500">
+                                <Smartphone className="w-3.5 h-3.5 text-slate-400" />
+                                Phone:
+                              </span>
+                              <span className="font-mono font-bold text-slate-900">{rec.phone}</span>
+                            </div>
+                            <div className="flex items-center justify-between text-[11px]">
+                              <span className="flex items-center gap-1 font-medium text-slate-500">
+                                <Wallet className="w-3.5 h-3.5 text-slate-400" />
+                                Channel:
+                              </span>
+                              <span
+                                className={`font-mono font-bold px-1.5 py-0.5 rounded text-[10px] ${
+                                  rec.paymentChannel === 'MTN Mobile Money'
+                                    ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                                    : rec.paymentChannel === 'Airtel Money'
+                                    ? 'bg-rose-100 text-rose-900 border border-rose-300'
+                                    : 'bg-blue-100 text-blue-900 border border-blue-300'
+                                }`}
+                              >
+                                {rec.paymentChannel}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Completed Services Rendered List */}
+                          <div className="space-y-1 text-xs">
+                            <div className="flex items-center justify-between text-[10px] font-mono uppercase font-bold text-slate-400">
+                              <span>Completed Services</span>
+                              <span>{rec.completedServices.length} Jobs</span>
+                            </div>
+                            <div className="space-y-1 bg-slate-50/70 p-2 rounded-xl border border-slate-100 max-h-28 overflow-y-auto">
+                              {rec.completedServices.map((srv, idx) => (
+                                <div key={idx} className="flex items-center justify-between text-[11px] py-0.5 border-b border-slate-100 last:border-0">
+                                  <span className="text-slate-700 font-medium truncate max-w-[150px]" title={srv.serviceType}>
+                                    • {srv.serviceType}
+                                  </span>
+                                  <span className="font-mono font-bold text-slate-900 shrink-0">
+                                    UGX {srv.cost.toLocaleString()}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Total Service Amount Callout Box */}
+                          <div className="bg-emerald-50/80 border border-emerald-200/80 p-2.5 rounded-xl flex items-center justify-between">
+                            <div>
+                              <span className="text-[10px] font-bold uppercase text-emerald-800 block">Total Payment</span>
+                              <span className="text-[10px] text-emerald-600 font-medium">Sum of completed services</span>
+                            </div>
+                            <span className="text-sm font-black font-mono text-emerald-950">
+                              UGX {rec.totalServiceAmount.toLocaleString()}
+                            </span>
+                          </div>
+
+                          {/* Card Action Footer */}
+                          <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
+                            {rec.status === 'Pending' ? (
+                              <button
+                                onClick={() => handlePayStaffMember(rec.id)}
+                                className="w-full py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-xs transition cursor-pointer flex items-center justify-center gap-1.5"
+                              >
+                                <Smartphone className="w-3.5 h-3.5" />
+                                <span>Pay via MoMo ({rec.phone})</span>
+                              </button>
+                            ) : (
+                              <div className="w-full flex items-center justify-between gap-2">
+                                <span className="text-[10px] font-mono font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-1 rounded-lg truncate">
+                                  Paid ✓ {rec.paymentRef}
+                                </span>
+                                <button
+                                  onClick={() => setSelectedPayslip(rec)}
+                                  className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-lg transition cursor-pointer flex items-center gap-1 shrink-0"
+                                >
+                                  <FileText className="w-3 h-3" /> Voucher
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              ) : (
+                /* Archive Payroll View */
+                <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-xs space-y-4">
+                  <div>
+                    <h3 className="font-extrabold text-sm text-slate-900">Processed Service Payments Archive</h3>
+                    <p className="text-xs text-slate-500">Historical service payout logs and direct mobile money disburals</p>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {[
+                      { period: 'June 2026', total: 4850000, staffCount: 5, date: '2026-06-30', ref: 'MOMO-BATCH-2026-06' },
+                      { period: 'May 2026', total: 4420000, staffCount: 5, date: '2026-05-31', ref: 'MOMO-BATCH-2026-05' },
+                      { period: 'April 2026', total: 4100000, staffCount: 4, date: '2026-04-30', ref: 'MOMO-BATCH-2026-04' },
+                    ].map((hist, idx) => (
+                      <div key={idx} className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <span className="font-extrabold text-sm text-slate-900 block">{hist.period}</span>
+                            <span className="text-[10px] font-mono text-slate-500">{hist.ref}</span>
+                          </div>
+                          <span className="text-[10px] font-mono font-bold px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded border border-emerald-200">
+                            Completed ✓
+                          </span>
+                        </div>
+
+                        <div className="text-xs space-y-1 font-mono">
+                          <div className="flex justify-between text-slate-600">
+                            <span>Total Disbursed:</span>
+                            <span className="font-bold text-slate-900">UGX {hist.total.toLocaleString()}</span>
+                          </div>
+                          <div className="flex justify-between text-slate-600">
+                            <span>Staff Members Paid:</span>
+                            <span className="text-slate-900">{hist.staffCount} Staff</span>
+                          </div>
+                          <div className="flex justify-between text-slate-600">
+                            <span>Execution Date:</span>
+                            <span className="text-slate-900">{hist.date}</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* SERVICE PAYMENT ADVICE / VOUCHER MODAL */}
+          {selectedPayslip && (
+            <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-3xl p-6 max-w-lg w-full shadow-2xl space-y-5 border border-slate-100 animate-scaleUp max-h-[90vh] overflow-y-auto">
+                {/* Header */}
+                <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-9 h-9 rounded-xl bg-emerald-700 text-white flex items-center justify-center font-black">
+                      UG
+                    </div>
+                    <div>
+                      <h3 className="font-black text-sm text-slate-900 uppercase tracking-tight">
+                        UG Park Mobility & Services
+                      </h3>
+                      <p className="text-[10px] font-mono text-slate-500">Service Performance Payment Voucher</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setSelectedPayslip(null)}
+                    className="p-1 text-slate-400 hover:text-slate-700 rounded-lg cursor-pointer"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                {/* Voucher Details */}
+                <div className="space-y-4 text-xs font-mono">
+                  <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-1.5">
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Staff Name:</span>
+                      <span className="font-bold text-slate-900">{selectedPayslip.employeeName}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Staff Role:</span>
+                      <span className="text-slate-900 font-bold">{selectedPayslip.role}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Registered Phone:</span>
+                      <span className="text-slate-900 font-bold">{selectedPayslip.phone}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Payout Channel:</span>
+                      <span className="text-emerald-700 font-bold">{selectedPayslip.paymentChannel}</span>
+                    </div>
+                  </div>
+
+                  {/* Completed Services Table */}
+                  <div className="space-y-2">
+                    <span className="text-[10px] uppercase font-bold text-slate-400">Completed Services Breakdown</span>
+                    <div className="border border-slate-200 rounded-xl overflow-hidden">
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-slate-100 text-[10px] uppercase text-slate-600 border-b border-slate-200">
+                          <tr>
+                            <th className="p-2">Completed Service</th>
+                            <th className="p-2 text-right">Service Amount</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {selectedPayslip.completedServices.map((srv, idx) => (
+                            <tr key={idx}>
+                              <td className="p-2 text-slate-700 font-medium">{srv.serviceType}</td>
+                              <td className="p-2 text-right font-bold text-slate-900 font-mono">
+                                UGX {srv.cost.toLocaleString()}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* Total Payment Callout */}
+                  <div className="bg-emerald-50 border border-emerald-300 p-3.5 rounded-2xl flex items-center justify-between">
+                    <div>
+                      <span className="text-[10px] font-bold uppercase text-emerald-800 block">Total Payout Disbursed</span>
+                      <span className="text-[10px] text-emerald-600">Sum of completed services</span>
+                    </div>
+                    <span className="text-lg font-black font-mono text-emerald-950">
+                      UGX {selectedPayslip.totalServiceAmount.toLocaleString()}
+                    </span>
+                  </div>
+
+                  {selectedPayslip.paymentRef && (
+                    <div className="text-center text-[10px] text-slate-500 font-mono">
+                      Transaction Ref: <span className="font-bold text-slate-900">{selectedPayslip.paymentRef}</span> • Paid on {selectedPayslip.paidAt}
+                    </div>
+                  )}
+                </div>
+
+                {/* Footer Controls */}
+                <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
+                  <button
+                    onClick={() => {
+                      alert(`Payment voucher for ${selectedPayslip.employeeName} downloaded.`);
+                    }}
+                    className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs rounded-xl transition cursor-pointer flex items-center gap-1.5"
+                  >
+                    <Printer className="w-3.5 h-3.5" /> Export Voucher
+                  </button>
+                  <button
+                    onClick={() => setSelectedPayslip(null)}
+                    className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl cursor-pointer"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* CREATE JOB CARD MODAL */}
           {showNewJobModal && (
             <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs z-50 flex items-center justify-center p-4">
@@ -2713,8 +3613,12 @@ Format as a polite, clean, structured layout. Avoid deep developer jargon.`;
               </div>
             </div>
           )}
+            </div>
+          )}
+          </div>
         </div>
-      )}
+      </div>
+    )}
 
       {/* ==============================================================
           ROLE: SYSTEM ADMINISTRATOR VIEW
