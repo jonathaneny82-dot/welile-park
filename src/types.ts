@@ -125,6 +125,10 @@ export interface VehicleService {
   customerNotified?: boolean;
   attendantNotified?: boolean;
   notifiedAt?: string;
+
+  // Invoicing & Payment Status
+  isPaid?: boolean;
+  invoiceNumber?: string;
 }
 
 export interface ServiceItem {
