@@ -211,9 +211,11 @@ export const StaffPortal: React.FC<StaffPortalProps> = ({
     return matched.length > 0 ? matched : invList;
   };
 
-  // Technician Assignment Acceptance & Rejection State
+  // Technician Assignment Acceptance, Rejection & Cancellation State
   const [rejectingSrvId, setRejectingSrvId] = useState<string | null>(null);
   const [rejectionReasonInput, setRejectionReasonInput] = useState('');
+  const [cancellingSrvId, setCancellingSrvId] = useState<string | null>(null);
+  const [cancellationReasonInput, setCancellationReasonInput] = useState('');
 
   const handleAcceptDutyAssignment = async (srvId: string) => {
     try {
@@ -227,7 +229,7 @@ export const StaffPortal: React.FC<StaffPortalProps> = ({
       });
 
       if (res.ok) {
-        setTechSuccess('✅ Duty assignment ACCEPTED! Vehicle status updated to Inspection.');
+        setTechSuccess('✅ Duty assignment ACCEPTED & LOCKED! Vehicle status updated to Inspection.');
         onRefreshAll();
         setTimeout(() => setTechSuccess(''), 4000);
       }
@@ -252,6 +254,34 @@ export const StaffPortal: React.FC<StaffPortalProps> = ({
         setTechSuccess('⚠️ Duty assignment REJECTED. Service Manager notified to reassign.');
         setRejectingSrvId(null);
         setRejectionReasonInput('');
+        onRefreshAll();
+        setTimeout(() => setTechSuccess(''), 4000);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleCancelDutyAssignment = async (srvId: string) => {
+    if (!cancellationReasonInput.trim()) {
+      alert('Please provide a reason for cancelling this accepted duty assignment.');
+      return;
+    }
+    try {
+      const res = await fetch(`/api/services/${srvId}/assignment`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          assignmentStatus: 'Cancelled',
+          rejectionReason: cancellationReasonInput,
+          technicianId: currentUser?.id || 'usr-3',
+        }),
+      });
+
+      if (res.ok) {
+        setTechSuccess('🚨 Duty CANCELLED. Returned to Service Manager pool for reassignment.');
+        setCancellingSrvId(null);
+        setCancellationReasonInput('');
         onRefreshAll();
         setTimeout(() => setTechSuccess(''), 4000);
       }
@@ -1251,8 +1281,49 @@ Format as a polite, clean, structured layout. Avoid deep developer jargon.`;
                             )}
 
                             {isAssignedToMe && srv.assignmentStatus === 'Accepted' && (
-                              <div className="mt-1.5 text-[10px] font-mono font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded flex items-center gap-1">
-                                <span>✓ Duty Accepted</span>
+                              <div className="mt-2 pt-2 border-t border-gray-100 space-y-1.5">
+                                <div className="text-[10px] font-mono font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-1 rounded flex items-center justify-between">
+                                  <span>🔒 Duty Assignment Locked & Accepted</span>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setCancellingSrvId(cancellingSrvId === srv.id ? null : srv.id);
+                                    }}
+                                    className="px-2 py-0.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-[9px] rounded transition cursor-pointer"
+                                  >
+                                    Cancel Duty
+                                  </button>
+                                </div>
+
+                                {cancellingSrvId === srv.id && (
+                                  <div onClick={(e) => e.stopPropagation()} className="p-2 bg-rose-50 border border-rose-200 rounded-lg space-y-1.5 animate-in fade-in duration-200">
+                                    <label className="text-[10px] font-bold text-rose-800 block">Reason for Cancelling Accepted Duty:</label>
+                                    <input
+                                      type="text"
+                                      value={cancellationReasonInput}
+                                      onChange={(e) => setCancellationReasonInput(e.target.value)}
+                                      placeholder="e.g. Emergency transfer / parts unavailable..."
+                                      className="w-full text-3xs p-1.5 border border-rose-200 rounded bg-white"
+                                    />
+                                    <div className="flex gap-1.5">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleCancelDutyAssignment(srv.id)}
+                                        className="flex-1 py-1 bg-rose-700 text-white font-bold text-[10px] rounded hover:bg-rose-800 cursor-pointer"
+                                      >
+                                        Confirm Cancellation & Return to Manager
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => setCancellingSrvId(null)}
+                                        className="px-2 py-1 bg-gray-200 text-gray-700 text-[10px] font-bold rounded hover:bg-gray-300 cursor-pointer"
+                                      >
+                                        Back
+                                      </button>
+                                    </div>
+                                  </div>
+                                )}
                               </div>
                             )}
 
@@ -1287,63 +1358,205 @@ Format as a polite, clean, structured layout. Avoid deep developer jargon.`;
                       (() => {
                         const activeJob = services.find((s) => s.id === techSelectedSrv);
                         const veh = vehicles.find((v) => v.id === activeJob?.vehicleId);
+                        const cust = users.find((u) => u.id === activeJob?.customerId);
                         if (!activeJob) return null;
+
+                        // Extract or derive requested services list
+                        const requestedServices = activeJob.selectedServicesList && activeJob.selectedServicesList.length > 0
+                          ? activeJob.selectedServicesList
+                          : [
+                              {
+                                id: 'req-1',
+                                title: activeJob.serviceType.replace(/^🏠 Home Service:\s*/, ''),
+                                cost: activeJob.cost,
+                                progress: activeJob.status === ServiceStatus.COMPLETED ? 'Completed' : (activeJob.status === ServiceStatus.BOOKED ? 'Not Started' : 'In Progress'),
+                              },
+                            ];
+
+                        const servicesTotal = requestedServices.reduce((sum, item) => sum + (item.cost || 0), 0);
+                        const partsTotal = (activeJob.partsAllocated || []).reduce((sum, item) => sum + (item.totalCost || 0), 0);
+                        const currentLabour = activeJob.labourCost !== undefined ? activeJob.labourCost : 50000;
+                        const homeFee = 0; // Home Service is a delivery mode with UGX 0 fee
+                        const grandTotalInvoice = servicesTotal + currentLabour + partsTotal + homeFee;
 
                         return (
                           <div className="space-y-4">
-                            <div className="flex justify-between items-start border-b border-gray-200 pb-3">
+                            {/* Header & Status */}
+                            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-gray-200 pb-3">
                               <div>
-                                <h3 className="text-sm font-extrabold text-gray-900">
-                                  Job ID: {activeJob.id.toUpperCase()} • {veh?.make} {veh?.model}
-                                </h3>
-                                <p className="text-3xs text-gray-500 font-mono mt-0.5">REG: {veh?.registrationNumber} • Mileage: {veh?.mileage?.toLocaleString() || 0} km</p>
-                                
-                                {/* Real-time Reserved Parking Location for Technician */}
-                                {(() => {
-                                  const vehRes = reservations.find((r) => r.vehicleId === activeJob.vehicleId);
-                                  const vehSpace = vehRes ? parkingSpaces.find((p) => p.id === vehRes.parkingId) : parkingSpaces.find((p) => p.assignedVehicleId === activeJob.vehicleId);
-                                  const locationText = vehSpace ? `Floor ${vehSpace.floor}, Slot ${vehSpace.spaceNumber}` : activeJob.assignedDeliveryBay || 'Floor 1, Slot A04';
-                                  return (
-                                    <div className="mt-1.5 inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 border border-emerald-300 rounded-lg text-3xs font-mono font-black text-emerald-900">
-                                      <MapPin className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                                      <span>Vehicle Parking Location: {locationText}</span>
-                                    </div>
-                                  );
-                                })()}
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <h3 className="text-sm font-extrabold text-gray-900">
+                                    Job ID: {activeJob.id.toUpperCase()} • {veh?.make} {veh?.model}
+                                  </h3>
+                                  {activeJob.isHomeService && (
+                                    <span className="px-2.5 py-0.5 rounded-full text-3xs font-black font-mono bg-blue-600 text-white border border-blue-400 animate-pulse flex items-center gap-1">
+                                      🏠 SERVICE TYPE: HOME SERVICE
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-3xs text-gray-500 font-mono mt-0.5">
+                                  REG: {veh?.registrationNumber} • Mileage: {veh?.mileage?.toLocaleString() || 0} km
+                                </p>
                               </div>
-                              <span className="text-2xs font-bold bg-orange-100 text-orange-800 px-2.5 py-0.5 rounded font-mono">
+                              <span className="text-2xs font-bold bg-orange-100 text-orange-800 px-2.5 py-1 rounded-xl font-mono">
                                 STATUS: {activeJob.status}
                               </span>
                             </div>
 
-                            {/* Mechanic Milestone Advancement */}
-                            <div className="space-y-2">
-                              <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wider font-mono">Advance Workshop Phase</h4>
-                              <div className="flex flex-wrap gap-2">
-                                {[
-                                  ServiceStatus.INSPECTION,
-                                  ServiceStatus.OIL_CHANGE,
-                                  ServiceStatus.BRAKE_INSPECTION,
-                                  ServiceStatus.WHEEL_ALIGNMENT,
-                                  ServiceStatus.CAR_WASH,
-                                  ServiceStatus.COMPLETED,
-                                ].map((phase) => (
-                                  <button
-                                    key={phase}
-                                    onClick={() => handleTechnicianUpdate(activeJob.id, phase)}
-                                    className="px-3 py-1.5 bg-white border border-gray-200 hover:border-orange-300 text-gray-700 hover:text-orange-800 text-xs font-semibold rounded-lg shadow-2xs transition-colors cursor-pointer"
-                                  >
-                                    Mark {phase}
-                                  </button>
-                                ))}
+                            {/* Read-Only Customer Service Request Summary */}
+                            <div className="bg-white border border-indigo-100 p-4 rounded-xl space-y-3 shadow-2xs">
+                              <h4 className="text-xs font-mono font-bold text-indigo-900 uppercase tracking-wider flex items-center gap-1.5 border-b border-indigo-50 pb-2">
+                                <ClipboardCheck className="w-4 h-4 text-indigo-600" />
+                                Customer Submitted Service Request (Read-Only Summary)
+                              </h4>
+
+                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-2xs">
+                                <div>
+                                  <span className="text-3xs font-mono font-bold text-slate-400 block uppercase">Customer Name</span>
+                                  <span className="font-extrabold text-slate-900">{cust?.name || 'Valued Customer'}</span>
+                                </div>
+                                <div>
+                                  <span className="text-3xs font-mono font-bold text-slate-400 block uppercase">Contact Phone</span>
+                                  <span className="font-bold text-slate-800">{activeJob.contactPhone || cust?.phone || '+256 700 000000'}</span>
+                                </div>
+                                <div>
+                                  <span className="text-3xs font-mono font-bold text-slate-400 block uppercase">Booking Date & Time</span>
+                                  <span className="font-mono text-slate-800">{new Date(activeJob.bookingDate).toLocaleString()}</span>
+                                </div>
+                                <div>
+                                  <span className="text-3xs font-mono font-bold text-slate-400 block uppercase">Vehicle Details</span>
+                                  <span className="font-bold text-slate-900">{veh?.make} {veh?.model} ({veh?.registrationNumber})</span>
+                                </div>
+                                <div className="sm:col-span-2">
+                                  <span className="text-3xs font-mono font-bold text-slate-400 block uppercase">
+                                    {activeJob.isHomeService ? 'Home Delivery Location' : 'Parking Yard Location'}
+                                  </span>
+                                  <span className="font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 inline-block mt-0.5">
+                                    {activeJob.isHomeService
+                                      ? `📍 Address: ${activeJob.homeAddress || 'Plot 42 Naguru Drive'}`
+                                      : `🅿️ Parking Spot: Floor G, Slot A12`}
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* Diagnostic / Customer Notes */}
+                              {activeJob.diagnosticNotes && (
+                                <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-3xs text-slate-700 italic">
+                                  <span className="font-bold not-italic text-slate-900 block mb-0.5">Customer Instructions:</span>
+                                  "{activeJob.diagnosticNotes}"
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Requested Services & Progress Controls */}
+                            <div className="bg-white border border-slate-200 p-4 rounded-xl space-y-3">
+                              <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider font-mono flex items-center justify-between">
+                                <span>Customer Requested Services & Progress Updates</span>
+                                <span className="text-3xs text-slate-400 font-normal">
+                                  (Read-only services & prices. Technician updates progress)
+                                </span>
+                              </h4>
+
+                              <div className="space-y-2.5">
+                                {requestedServices.map((srvItem, idx) => {
+                                  const prog = srvItem.progress || 'Not Started';
+                                  return (
+                                    <div
+                                      key={srvItem.id || idx}
+                                      className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                                    >
+                                      <div>
+                                        <h5 className="text-xs font-extrabold text-slate-900">{srvItem.title}</h5>
+                                        <span className="text-3xs font-mono font-bold text-emerald-700">
+                                          UGX {srvItem.cost.toLocaleString()}
+                                        </span>
+                                      </div>
+
+                                      {/* Progress Control Buttons */}
+                                      <div className="flex items-center gap-1.5 shrink-0">
+                                        {[
+                                          { label: 'Not Started', bg: 'bg-slate-200 text-slate-700 hover:bg-slate-300' },
+                                          { label: 'In Progress', bg: 'bg-amber-500 text-white hover:bg-amber-600' },
+                                          { label: 'Completed', bg: 'bg-emerald-600 text-white hover:bg-emerald-700' },
+                                        ].map((pState) => {
+                                          const isCurrent = prog === pState.label;
+                                          return (
+                                            <button
+                                              key={pState.label}
+                                              type="button"
+                                              onClick={async () => {
+                                                const updatedList = requestedServices.map((item, i) =>
+                                                  i === idx ? { ...item, progress: pState.label as any } : item
+                                                );
+                                                // Sync to backend
+                                                await fetch(`/api/services/${activeJob.id}/status`, {
+                                                  method: 'PUT',
+                                                  headers: { 'Content-Type': 'application/json' },
+                                                  body: JSON.stringify({
+                                                    selectedServicesList: updatedList,
+                                                    status: updatedList.every((it) => it.progress === 'Completed')
+                                                      ? ServiceStatus.COMPLETED
+                                                      : ServiceStatus.INSPECTION,
+                                                  }),
+                                                });
+                                                onRefreshAll();
+                                              }}
+                                              className={`px-2.5 py-1 text-3xs font-bold font-mono rounded-lg transition cursor-pointer ${
+                                                isCurrent
+                                                  ? `${pState.bg} ring-2 ring-offset-1 ring-slate-400 font-black shadow-2xs`
+                                                  : 'bg-white border border-slate-200 text-slate-500 hover:bg-slate-100'
+                                              }`}
+                                            >
+                                              {isCurrent && '✓ '}
+                                              {pState.label}
+                                            </button>
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
                               </div>
                             </div>
 
-                            {/* Spare Parts Allocation - Filtered Corresponding Parts */}
+                            {/* Technician Labour Charge Input */}
+                            <div className="bg-white border border-slate-200 p-3.5 rounded-xl space-y-2">
+                              <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider font-mono">
+                                Technician Labour Charge (UGX)
+                              </h4>
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="number"
+                                  min={0}
+                                  step={5000}
+                                  value={activeJob.labourCost !== undefined ? activeJob.labourCost : 50000}
+                                  onChange={async (e) => {
+                                    const val = parseInt(e.target.value) || 0;
+                                    const newGrandTotal = servicesTotal + val + partsTotal + homeFee;
+                                    await fetch(`/api/services/${activeJob.id}/status`, {
+                                      method: 'PUT',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({
+                                        labourCost: val,
+                                        cost: newGrandTotal,
+                                      }),
+                                    });
+                                    onRefreshAll();
+                                  }}
+                                  className="w-full sm:w-60 text-xs p-2 border border-slate-300 rounded-lg font-bold text-slate-900 bg-slate-50 focus:bg-white"
+                                  placeholder="Enter Labour Charge"
+                                />
+                                <span className="text-3xs text-slate-500 font-mono">
+                                  💡 Labour charge automatically added to final invoice.
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Spare Parts Allocation */}
                             <div className="bg-white border border-gray-200 p-3.5 rounded-xl space-y-3">
                               <div className="flex items-center justify-between">
                                 <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wider font-mono">
-                                  Allocate Corresponding Parts & Lubricants
+                                  Allocate Approved Inventory Spare Parts & Lubricants
                                 </h4>
                                 <button
                                   type="button"
@@ -1360,14 +1573,14 @@ Format as a polite, clean, structured layout. Avoid deep developer jargon.`;
                                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                                     <div className="sm:col-span-2">
                                       <label className="block text-4xs font-bold text-gray-500 uppercase mb-1">
-                                        Select Corresponding Stock Item ({filteredParts.length} parts match "{activeJob.serviceType}")
+                                        Select Corresponding Stock Item ({filteredParts.length} parts match)
                                       </label>
                                       <select
                                         value={partToRequest}
                                         onChange={(e) => setPartToRequest(e.target.value)}
                                         className="w-full text-2xs p-1.5 border border-gray-200 rounded font-medium text-slate-900 bg-slate-50"
                                       >
-                                        <option value="">-- Choose Corresponding Stock Item --</option>
+                                        <option value="">-- Choose Approved Stock Item --</option>
                                         {filteredParts.map((item) => (
                                           <option key={item.id} value={item.id}>
                                             {item.partName} ({item.quantity} available - UGX {item.price.toLocaleString()})
@@ -1391,22 +1604,102 @@ Format as a polite, clean, structured layout. Avoid deep developer jargon.`;
 
                               <div className="flex items-center justify-between pt-1">
                                 <button
-                                  onClick={() => handleAddServicePart(activeJob.id)}
+                                  type="button"
+                                  onClick={async () => {
+                                    if (!partToRequest) return;
+                                    const item = inventory.find((i) => i.id === partToRequest);
+                                    if (!item) return;
+
+                                    const newPart = {
+                                      partId: item.id,
+                                      partName: item.partName,
+                                      quantity: partQty,
+                                      unitPrice: item.price,
+                                      totalCost: item.price * partQty,
+                                    };
+
+                                    const updatedParts = [...(activeJob.partsAllocated || []), newPart];
+                                    const newPartsTotal = updatedParts.reduce((s, p) => s + p.totalCost, 0);
+                                    const newGrandTotal = servicesTotal + currentLabour + newPartsTotal + homeFee;
+
+                                    await fetch(`/api/services/${activeJob.id}/status`, {
+                                      method: 'PUT',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({
+                                        partsAllocated: updatedParts,
+                                        cost: newGrandTotal,
+                                      }),
+                                    });
+                                    setPartToRequest('');
+                                    setPartQty(1);
+                                    onRefreshAll();
+                                  }}
                                   className="px-4 py-1.5 bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold rounded-xl cursor-pointer shadow-xs flex items-center gap-1.5"
                                 >
                                   <Package className="w-3.5 h-3.5" />
-                                  <span>Allocate Part & Add Extra Cost to Invoice</span>
+                                  <span>Allocate Part & Add to Invoice</span>
                                 </button>
-
-                                <span className="text-[10px] text-slate-500 font-mono">
-                                  💡 Extra costs added to customer invoice & notified
-                                </span>
                               </div>
                             </div>
 
-                            {/* Mechanic diagnostic notes */}
+                            {/* Automatic Itemized Final Invoice Breakdown */}
+                            <div className="bg-slate-900 text-white p-4 rounded-xl space-y-3 font-mono">
+                              <h4 className="text-xs font-bold text-amber-400 uppercase tracking-wider flex items-center justify-between border-b border-slate-800 pb-2">
+                                <span>Itemized Customer Invoice Calculation</span>
+                                <span className="text-3xs text-slate-400 font-normal">Real-Time Total</span>
+                              </h4>
+
+                              <div className="space-y-1.5 text-2xs">
+                                <div className="flex justify-between text-slate-300">
+                                  <span>Customer Selected Services:</span>
+                                  <span className="font-bold">UGX {servicesTotal.toLocaleString()}</span>
+                                </div>
+                                {requestedServices.map((it, idx) => (
+                                  <div key={idx} className="flex justify-between text-3xs text-slate-400 pl-3">
+                                    <span>• {it.title} ({it.progress || 'Not Started'})</span>
+                                    <span>UGX {it.cost.toLocaleString()}</span>
+                                  </div>
+                                ))}
+
+                                <div className="flex justify-between text-slate-300 pt-1 border-t border-slate-800">
+                                  <span>Technician Labour Charge:</span>
+                                  <span className="font-bold text-amber-300">UGX {currentLabour.toLocaleString()}</span>
+                                </div>
+
+                                {activeJob.partsAllocated && activeJob.partsAllocated.length > 0 && (
+                                  <div className="pt-1 border-t border-slate-800 space-y-1">
+                                    <div className="flex justify-between text-slate-300">
+                                      <span>Allocated Spare Parts & Lubricants:</span>
+                                      <span className="font-bold text-purple-300">UGX {partsTotal.toLocaleString()}</span>
+                                    </div>
+                                    {activeJob.partsAllocated.map((pt, i) => (
+                                      <div key={i} className="flex justify-between text-3xs text-slate-400 pl-3">
+                                        <span>• {pt.partName} (x{pt.quantity})</span>
+                                        <span>UGX {pt.totalCost.toLocaleString()}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+
+                                {activeJob.isHomeService && (
+                                  <div className="flex justify-between text-blue-300 pt-1 border-t border-slate-800">
+                                    <span>Booking Type: HOME SERVICE (Doorstep Location):</span>
+                                    <span className="font-bold">UGX 0</span>
+                                  </div>
+                                )}
+
+                                <div className="flex justify-between text-sm font-black text-emerald-400 pt-2 border-t border-slate-700">
+                                  <span>FINAL INVOICE GRAND TOTAL:</span>
+                                  <span>UGX {grandTotalInvoice.toLocaleString()}</span>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Technician Observations Log */}
                             <div className="space-y-1.5">
-                              <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wider font-mono">Technician Observations Log</h4>
+                              <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wider font-mono">
+                                Technician Observations Log
+                              </h4>
                               <textarea
                                 rows={2}
                                 value={techNotes}
@@ -1415,6 +1708,7 @@ Format as a polite, clean, structured layout. Avoid deep developer jargon.`;
                                 className="w-full text-xs p-2.5 bg-white border border-gray-200 rounded-lg focus:ring-1 focus:ring-orange-500"
                               />
                               <button
+                                type="button"
                                 onClick={() => handleTechnicianUpdate(activeJob.id, activeJob.status)}
                                 className="px-4 py-1 bg-slate-800 hover:bg-slate-700 text-white text-2xs font-bold rounded cursor-pointer"
                               >
@@ -1434,6 +1728,7 @@ Format as a polite, clean, structured layout. Avoid deep developer jargon.`;
                                 </p>
                               </div>
                               <button
+                                type="button"
                                 onClick={() => handleOpenHandoffModal(activeJob.id)}
                                 className="px-4 py-2.5 bg-emerald-400 hover:bg-emerald-300 text-slate-950 font-black text-xs rounded-xl shadow-lg transition shrink-0 flex items-center justify-center gap-1.5 cursor-pointer"
                               >

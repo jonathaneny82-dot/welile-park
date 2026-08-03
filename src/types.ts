@@ -100,6 +100,14 @@ export interface VehicleService {
   homeCity?: string;
   homeLandmark?: string;
   contactPhone?: string;
+  visitDate?: string;
+  visitTime?: string;
+  homeServiceFee?: number;
+
+  // Breakdown & Progress fields for Technician & Invoice Workflow
+  selectedServicesList?: { id?: string; title: string; cost: number; progress?: 'Not Started' | 'In Progress' | 'Completed' }[];
+  labourCost?: number;
+  partsAllocated?: { partId: string; partName: string; quantity: number; unitPrice: number; totalCost: number }[];
 
   // Hand-off & Multi-Role Coordination (Technician -> Manager + Customer + Parking Attendant)
   assignmentStatus?: 'Pending' | 'Accepted' | 'Rejected';

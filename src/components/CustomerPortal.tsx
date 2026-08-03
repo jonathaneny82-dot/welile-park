@@ -83,6 +83,9 @@ export interface LocationYard {
   ratePerHour: number;
   phone: string;
   hasGarage: boolean;
+  hasCarWash?: boolean;
+  hasEvCharging?: boolean;
+  hasHomeService?: boolean;
   security: string;
 }
 
@@ -509,10 +512,12 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
 
   // Home Car Servicing Request Modal State
   const [showHomeServiceModal, setShowHomeServiceModal] = useState<boolean>(false);
+  const [isHomeServiceMode, setIsHomeServiceMode] = useState<boolean>(false);
   const [homeServiceVehicleId, setHomeServiceVehicleId] = useState<string>('');
-  const [homeServicePackage, setHomeServicePackage] = useState<string>('Mobile Oil Change & Filter (Castrol Synth 10W-40)');
+  const [homeServicePackage, setHomeServicePackage] = useState<string>('');
   const [homeServiceAddress, setHomeServiceAddress] = useState<string>('Plot 42 Naguru Drive, Ntinda-Naguru');
   const [homeServiceCity, setHomeServiceCity] = useState<string>('Kampala');
+  const [homeServiceGpsLocation, setHomeServiceGpsLocation] = useState<string>('0.3476° N, 32.5825° E (Kampala Central Pin)');
   const [homeServiceLandmark, setHomeServiceLandmark] = useState<string>('Opposite Shell Ntinda / Black Gate');
   const [homeServicePhone, setHomeServicePhone] = useState<string>('+256 772 123456');
   const [homeServiceDate, setHomeServiceDate] = useState<string>(new Date().toISOString().split('T')[0]);
@@ -549,12 +554,40 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
     setTimeout(() => setServiceNotificationBanner(null), 5000);
   };
 
-  // Delete vehicle action (with local storage & state fallback)
+  // Delete vehicle action (with strict active operations check & historical preservation)
   const handleDeleteVehicle = async (vehId: string, regNo: string) => {
+    // Client-side active check safeguard
+    const activeRes = reservations.filter(
+      (r) => (r.vehicleId === vehId || toUuid(r.vehicleId) === toUuid(vehId)) && r.status !== ReservationStatus.COMPLETED && r.status !== ReservationStatus.CANCELLED
+    );
+    const activeSrv = services.filter(
+      (s) => (s.vehicleId === vehId || toUuid(s.vehicleId) === toUuid(vehId)) && s.status !== ServiceStatus.COMPLETED
+    );
+
+    if (activeRes.length > 0 || activeSrv.length > 0) {
+      const reasons: string[] = [];
+      if (activeRes.length > 0) reasons.push(`${activeRes.length} active parking reservation(s)`);
+      if (activeSrv.length > 0) reasons.push(`${activeSrv.length} active service job(s) in progress`);
+
+      setServiceNotificationBanner({
+        type: 'warning',
+        message: `⚠️ Cannot delete vehicle ${regNo}: Vehicle has active operations (${reasons.join(' & ')}). All active jobs and reservations must be completed or cancelled before deleting.`,
+      });
+      return;
+    }
+
     try {
-      await fetch(`/api/vehicles/${vehId}`, {
+      const res = await fetch(`/api/vehicles/${vehId}`, {
         method: 'DELETE',
       });
+      const data = await res.json();
+      if (!res.ok) {
+        setServiceNotificationBanner({
+          type: 'warning',
+          message: `⚠️ Cannot delete vehicle ${regNo}: ${data.details || data.error || 'Vehicle has active operations.'}`,
+        });
+        return;
+      }
     } catch (err) {
       console.warn('Network error deleting vehicle:', err);
     }
@@ -570,8 +603,8 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
     } catch {}
 
     setServiceNotificationBanner({
-      type: 'info',
-      message: `🗑️ Vehicle ${regNo} deleted successfully.`,
+      type: 'success',
+      message: `🗑️ Vehicle ${regNo} deleted successfully. Historical invoices & completed service records remain archived.`,
     });
     
     if (selectedVehicleId === vehId || toUuid(selectedVehicleId) === toUuid(vehId)) {
@@ -579,7 +612,7 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
       setSelectedVehicleId(remaining[0]?.id || '');
     }
     onRefreshAll();
-    setTimeout(() => setServiceNotificationBanner(null), 4000);
+    setTimeout(() => setServiceNotificationBanner(null), 5000);
   };
 
   // Unselect / Cancel Parking Reservation
@@ -608,33 +641,41 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
 
   const handleCreateHomeServiceRequest = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (selectedServiceCatalog.length === 0) {
+      alert('Please select at least one service on the Service Selection page before submitting a Home Service request.');
+      return;
+    }
+
     if (!homeServiceAddress || !homeServicePhone) {
-      alert('Please provide your home address and phone contact number.');
+      alert('Please provide your home/workplace address and phone contact number.');
       return;
     }
 
     const selectedVeh = myVehicles.find((v) => v.id === (homeServiceVehicleId || selectedVehicleId)) || activeVehicle;
     const vehId = selectedVeh?.id || 'veh-1';
 
-    // Duplicate check to avoid double selection
-    const isDuplicate = services.some(
-      (s) =>
-        s.vehicleId === vehId &&
-        s.serviceType === homeServicePackage &&
-        s.status !== ServiceStatus.COMPLETED &&
-        s.status !== ServiceStatus.READY_FOR_PICKUP
-    );
-    if (isDuplicate) {
-      setServiceNotificationBanner({
-        type: 'warning',
-        message: `⚠️ Service "${homeServicePackage}" is ALREADY selected for ${selectedVeh?.registrationNumber || 'this vehicle'}! Double selection prevented. You can view or unselect it below.`,
-      });
-      setShowHomeServiceModal(false);
-      return;
-    }
-
     setIsSubmittingHomeService(true);
     setHomeServiceSuccessMsg('');
+
+    const SERVICE_CATALOG_COSTS: Record<string, number> = {
+      'Full Oil & Filter Change': 80000,
+      'Eco Foam Car Wash & Vacuum': 25000,
+      'Brake Pad & Rotor Inspection': 120000,
+      'Engine Diagnostics & Scan': 50000,
+      'Wheel Alignment & Balancing': 45000,
+      'AC Servicing & Gas Refill': 90000,
+      'Battery Health Test & Service': 35000,
+      'Suspension & Shock Service': 110000,
+    };
+
+    const selectedServicesList = selectedServiceCatalog.map((sTitle, idx) => ({
+      id: `srv-item-${Date.now()}-${idx}`,
+      title: sTitle,
+      cost: SERVICE_CATALOG_COSTS[sTitle] || 50000,
+      progress: 'Not Started',
+    }));
+
+    const totalCalculatedCost = selectedServicesList.reduce((sum, item) => sum + item.cost, 0);
 
     try {
       const res = await fetch('/api/services', {
@@ -643,29 +684,35 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
         body: JSON.stringify({
           vehicleId: vehId,
           customerId: userId || currentUser?.id || 'usr-1',
-          serviceType: homeServicePackage,
+          serviceType: `🏠 Home Service: ${selectedServiceCatalog.join(', ')}`,
           bookingDate: `${homeServiceDate}T${homeServiceTimeSlot.split(' ')[0]}:00Z`,
-          cost: 150000,
-          diagnosticNotes: `Landmark: ${homeServiceLandmark}. Instructions: ${homeServiceInstructions}`,
+          cost: totalCalculatedCost,
+          diagnosticNotes: `Location: ${homeServiceAddress}, ${homeServiceCity}. GPS Pin: ${homeServiceGpsLocation || '0.3476° N, 32.5825° E'}. Landmark: ${homeServiceLandmark || 'N/A'}. Instructions: ${homeServiceInstructions || 'None'}`,
           isHomeService: true,
           homeAddress: homeServiceAddress,
           homeCity: homeServiceCity,
           homeLandmark: homeServiceLandmark,
           contactPhone: homeServicePhone,
+          visitDate: homeServiceDate,
+          visitTime: homeServiceTimeSlot,
+          homeServiceFee: 0,
+          selectedServicesList: selectedServicesList,
         }),
       });
 
       if (res.ok) {
-        setHomeServiceSuccessMsg('🎉 Home Car Servicing request submitted! Service Manager & Mobile Technician notified.');
+        setIsSubmittingHomeService(false);
+        setShowHomeServiceModal(false);
+        setIsHomeServiceMode(false);
+        const bookedCount = selectedServicesList.length;
+        setSelectedServiceCatalog([]);
+        onRefreshAll();
+        setActiveTab('overview');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
         setServiceNotificationBanner({
           type: 'success',
-          message: `🎉 Service "${homeServicePackage}" successfully selected and added to your active bookings!`,
+          message: `🎉 Home Service Booking & Invoice created for ${bookedCount} service(s)! Total: UGX ${totalCalculatedCost.toLocaleString()} (0 Home Visit Fee). Service Manager will assign a technician.`,
         });
-        onRefreshAll();
-        setTimeout(() => {
-          setShowHomeServiceModal(false);
-          setHomeServiceSuccessMsg('');
-        }, 2200);
       } else {
         alert('Failed to send home service request.');
       }
@@ -786,9 +833,7 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
   const [historySearchQuery, setHistorySearchQuery] = useState<string>('');
 
   // Multi-service selection catalog state (users can select/unselect freely before submitting booking)
-  const [selectedServiceCatalog, setSelectedServiceCatalog] = useState<string[]>([
-    'Full Oil & Filter Change',
-  ]);
+  const [selectedServiceCatalog, setSelectedServiceCatalog] = useState<string[]>([]);
 
   // Scroll to top immediately whenever activeTab changes
   useEffect(() => {
@@ -822,9 +867,10 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
     );
   }, [customerServices]);
 
-  // Itemized rendered services list for the customer's active operations
+  // Itemized rendered services list for the customer's active operations (Deduplicated)
   const renderedItemsList = useMemo(() => {
     const list: { id: string; title: string; category: string; vehicleReg: string; cost: number; details: string; isPending?: boolean }[] = [];
+    const seenTitles = new Set<string>();
 
     // 1. Car Parking Reservation / Spot Fee if active
     if (hoursRemaining > 0) {
@@ -839,7 +885,7 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
       });
     }
 
-    // 2. Rendered / Requested Services from backend for THIS vehicle
+    // 2. Rendered / Requested Services from backend for THIS vehicle (Deduplicated by Service Type)
     if (customerServices.length > 0) {
       customerServices.forEach((srv) => {
         let cat = 'Garage Service';
@@ -849,16 +895,20 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
         else if (st.includes('charging') || st.includes('ev')) cat = 'EV Charging';
 
         const isPendingSrv = srv.status !== ServiceStatus.COMPLETED && srv.status !== ServiceStatus.READY_FOR_PICKUP;
+        const titleKey = `${srv.serviceType.trim().toLowerCase()}_${(srv.vehicleId || '').toString()}`;
 
-        list.push({
-          id: srv.id,
-          title: srv.serviceType,
-          category: cat,
-          vehicleReg: activeVehicle?.registrationNumber || 'Vehicle',
-          cost: srv.cost || 25000,
-          details: srv.diagnosticNotes || `Status: ${srv.status}`,
-          isPending: isPendingSrv,
-        });
+        if (!seenTitles.has(titleKey)) {
+          seenTitles.add(titleKey);
+          list.push({
+            id: srv.id,
+            title: srv.serviceType,
+            category: cat,
+            vehicleReg: activeVehicle?.registrationNumber || 'Vehicle',
+            cost: srv.cost || 25000,
+            details: srv.diagnosticNotes || `Status: ${srv.status}`,
+            isPending: isPendingSrv,
+          });
+        }
       });
     }
 
@@ -1638,6 +1688,38 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
         </div>
       )}
 
+      {/* DEDICATED HOME SERVICE CARD (Positioned below the main service cards) */}
+      <div className="bg-gradient-to-r from-blue-950 via-indigo-900 to-slate-900 border border-blue-500/40 rounded-2xl p-4 sm:p-5 text-white shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-4 my-4">
+        <div className="flex items-start sm:items-center gap-3.5">
+          <div className="w-11 h-11 rounded-2xl bg-blue-600/30 border border-blue-400 flex items-center justify-center text-2xl shrink-0 shadow-xs">
+            🏠
+          </div>
+          <div className="space-y-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="px-2 py-0.5 rounded bg-blue-500/30 text-blue-300 text-3xs font-mono font-bold uppercase tracking-wider border border-blue-400/30">
+                Doorstep Maintenance Mode
+              </span>
+              <span className="text-3xs font-mono text-emerald-400 font-extrabold">UGX 0 Visit Delivery Fee</span>
+            </div>
+            <h3 className="text-sm sm:text-base font-black text-white">Doorstep Home Car Service</h3>
+            <p className="text-xs text-blue-200/90 leading-relaxed">
+              Have certified mechanics perform maintenance directly at your home or office address.
+            </p>
+          </div>
+        </div>
+        <button
+          onClick={() => {
+            setIsHomeServiceMode(true);
+            setActiveTab('services');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
+          className="px-5 py-2.5 bg-blue-500 hover:bg-blue-400 text-slate-950 font-black text-xs rounded-xl shadow-md transition cursor-pointer shrink-0 flex items-center justify-center gap-2"
+        >
+          <span>Request Home Service</span>
+          <ArrowRight className="w-4 h-4 text-slate-950" />
+        </button>
+      </div>
+
       {/* ================= MAIN CONTENT RENDER AREA ================= */}
 
       {/* --- TAB 1: OVERVIEW TAB --- */}
@@ -2035,71 +2117,6 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
       {/* --- TAB 3: CAR SERVICES & WASH TAB --- */}
       {activeTab === 'services' && (
         <div className="space-y-6">
-          
-          {/* Completed Vehicle Handoff Alert Banner */}
-          {services
-            .filter((s) => s.status === ServiceStatus.COMPLETED || s.status === ServiceStatus.READY_FOR_PICKUP)
-            .map((srv) => {
-              const veh = myVehicles.find((v) => v.id === srv.vehicleId) || activeVehicle;
-              return (
-                <div
-                  key={srv.id}
-                  className="bg-gradient-to-r from-emerald-900 via-teal-900 to-slate-900 text-white rounded-2xl p-5 shadow-xl border-2 border-emerald-400 space-y-3 relative overflow-hidden animate-fadeIn"
-                >
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-emerald-500/30 pb-2.5">
-                    <div className="flex items-center gap-2.5">
-                      <span className="text-2xl">🎉</span>
-                      <div>
-                        <span className="text-3xs font-mono font-bold uppercase tracking-wider text-emerald-300">
-                          VEHICLE SERVICING COMPLETE & HANDED OVER
-                        </span>
-                        <h3 className="text-sm font-extrabold text-white">
-                          Your {veh?.make || 'Vehicle'} {veh?.model || ''} ({veh?.registrationNumber || 'Car'}) is Ready!
-                        </h3>
-                      </div>
-                    </div>
-                    <span className="px-3 py-1 bg-emerald-400 text-slate-950 font-black text-3xs rounded-full uppercase font-mono self-start sm:self-center shadow-xs">
-                      Ready for Pickup
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs bg-emerald-950/70 p-3.5 rounded-xl border border-emerald-500/30">
-                    <div>
-                      <span className="text-3xs font-mono text-emerald-300 font-bold uppercase block">Service Performed:</span>
-                      <span className="font-extrabold text-white block mt-0.5">{srv.serviceType}</span>
-                      <span className="text-3xs text-emerald-200/90 block mt-1">Technician: Sarah Nakato (Master Mech)</span>
-                    </div>
-                    <div>
-                      <span className="text-3xs font-mono text-emerald-300 font-bold uppercase block">Designated Pickup Spot:</span>
-                      <span className="font-extrabold text-emerald-300 flex items-center gap-1 mt-0.5">
-                        <MapPin className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                        {srv.assignedDeliveryBay || 'Floor G, Slot A12 (Ready Pickup Bay)'}
-                      </span>
-                      <span className="text-3xs text-slate-300 block mt-1">Parking Attendant verified in slot</span>
-                    </div>
-                  </div>
-
-                  {srv.completionHandOffNotes && (
-                    <div className="text-3xs text-emerald-100 bg-slate-950/80 p-2.5 rounded-xl border border-emerald-500/20 font-mono">
-                      <strong className="text-emerald-400">Technician Handoff Notes:</strong> "{srv.completionHandOffNotes}"
-                    </div>
-                  )}
-
-                  <div className="flex items-center justify-end gap-2 pt-1">
-                    <button
-                      onClick={() => {
-                        setActiveTab('payments');
-                        setShowPayNowModal(true);
-                      }}
-                      className="px-4 py-2 bg-emerald-400 hover:bg-emerald-300 text-slate-950 font-black text-xs rounded-xl shadow-md transition cursor-pointer flex items-center gap-1.5"
-                    >
-                      <CreditCard className="w-3.5 h-3.5 text-slate-950" />
-                      <span>Settle Invoice (UGX {srv.cost.toLocaleString()})</span>
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
 
           {/* Dedicated "My Selected & Active Services" Panel with Unselect Action */}
           <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm space-y-3">
@@ -2182,6 +2199,34 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
 
           {/* Flexible Multi-Service Selection Matrix */}
           <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm space-y-4">
+            {/* Home Service Mode Alert Banner */}
+            {isHomeServiceMode && (
+              <div className="p-4 bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 border border-blue-400 text-white rounded-2xl shadow-md space-y-2 animate-fadeIn">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-blue-500/30 border border-blue-400 flex items-center justify-center text-xl shrink-0">
+                      🏠
+                    </div>
+                    <div>
+                      <h3 className="text-xs sm:text-sm font-extrabold text-white flex items-center gap-2">
+                        <span>HOME SERVICE SELECTION MODE</span>
+                        <span className="px-2 py-0.5 rounded bg-emerald-500/30 text-emerald-300 font-mono text-3xs uppercase font-bold">UGX 0 Delivery Fee</span>
+                      </h3>
+                      <p className="text-xs text-blue-200">
+                        Select one or more vehicle services below. Once selected, tap "Proceed to Home Location Details" to specify address & schedule.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setIsHomeServiceMode(false)}
+                    className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-3xs font-bold rounded-lg border border-slate-700 transition cursor-pointer shrink-0"
+                  >
+                    Switch to Workshop Booking
+                  </button>
+                </div>
+              </div>
+            )}
+
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
               <div>
                 <h2 className="text-xs font-mono font-bold uppercase tracking-wider text-slate-900 flex items-center gap-1.5">
@@ -2208,7 +2253,6 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
                 { id: 'ac', title: 'AC Servicing & Gas Refill', cost: 90000, desc: 'Cabin filter clean, refrigerant gas refill & compressor check', icon: '❄️' },
                 { id: 'battery', title: 'Battery Health Test & Service', cost: 35000, desc: 'Voltage testing, terminal cleaning & alternator check', icon: '🔋' },
                 { id: 'suspension', title: 'Suspension & Shock Service', cost: 110000, desc: 'Bushings check, strut inspection & noise diagnostics', icon: '🔩' },
-                { id: 'mobile', title: 'Doorstep Mobile Home Service', cost: 150000, desc: 'Certified technician dispatches to home or office location', icon: '🏠' },
               ].map((srvItem) => {
                 const isChecked = selectedServiceCatalog.includes(srvItem.title);
                 return (
@@ -2283,7 +2327,6 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
                       { title: 'AC Servicing & Gas Refill', cost: 90000 },
                       { title: 'Battery Health Test & Service', cost: 35000 },
                       { title: 'Suspension & Shock Service', cost: 110000 },
-                      { title: 'Doorstep Mobile Home Service', cost: 150000 },
                     ]
                       .filter((s) => selectedServiceCatalog.includes(s.title))
                       .reduce((acc, s) => acc + s.cost, 0)
@@ -2292,43 +2335,79 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
                 </span>
               </div>
 
-              <button
-                disabled={selectedServiceCatalog.length === 0}
-                onClick={async () => {
-                  if (!activeVehicle) return;
-                  try {
-                    for (const sTitle of selectedServiceCatalog) {
-                      await fetch('/api/services', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                          vehicleId: activeVehicle.id,
-                          customerId: userId,
-                          serviceType: sTitle,
-                          cost: sTitle.includes('Wash') ? 25000 : sTitle.includes('Oil') ? 80000 : 120000,
-                          bookingDate: new Date().toISOString(),
-                          diagnosticNotes: `Selected by customer via Service Selection Matrix: ${sTitle}`,
-                        }),
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  onClick={() => {
+                    if (selectedServiceCatalog.length === 0) {
+                      setServiceNotificationBanner({
+                        type: 'warning',
+                        message: '⚠️ Please select at least one vehicle service before requesting Home Service.',
                       });
+                      return;
                     }
-                    onRefreshAll();
-                    setServiceNotificationBanner({
-                      type: 'success',
-                      message: `🎉 Successfully booked ${selectedServiceCatalog.length} selected service(s) for vehicle ${activeVehicle.registrationNumber}!`,
-                    });
-                  } catch (e) {
-                    console.error(e);
-                  }
-                }}
-                className={`py-2.5 px-4 font-black text-xs rounded-xl shadow transition cursor-pointer flex items-center justify-center gap-1.5 ${
-                  selectedServiceCatalog.length > 0
-                    ? 'bg-emerald-500 hover:bg-emerald-400 text-slate-950'
-                    : 'bg-slate-700 text-slate-400 cursor-not-allowed'
-                }`}
-              >
-                <CheckCircle2 className="w-4 h-4 text-slate-950" />
-                <span>Confirm Service Booking ({selectedServiceCatalog.length})</span>
-              </button>
+                    setShowHomeServiceModal(true);
+                  }}
+                  className={`py-2.5 px-4 font-black text-xs rounded-xl shadow transition cursor-pointer flex items-center justify-center gap-1.5 ${
+                    isHomeServiceMode || selectedServiceCatalog.length > 0
+                      ? 'bg-blue-500 hover:bg-blue-400 text-slate-950 font-black'
+                      : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                  }`}
+                >
+                  <MapPin className="w-4 h-4 text-slate-950" />
+                  <span>Proceed to Home Location Details ({selectedServiceCatalog.length}) →</span>
+                </button>
+
+                <button
+                  disabled={selectedServiceCatalog.length === 0}
+                  onClick={async () => {
+                    if (!activeVehicle) return;
+                    try {
+                      const SERVICE_CATALOG_COSTS: Record<string, number> = {
+                        'Full Oil & Filter Change': 80000,
+                        'Eco Foam Car Wash & Vacuum': 25000,
+                        'Brake Pad & Rotor Inspection': 120000,
+                        'Engine Diagnostics & Scan': 50000,
+                        'Wheel Alignment & Balancing': 45000,
+                        'AC Servicing & Gas Refill': 90000,
+                        'Battery Health Test & Service': 35000,
+                        'Suspension & Shock Service': 110000,
+                      };
+                      for (const sTitle of selectedServiceCatalog) {
+                        const cost = SERVICE_CATALOG_COSTS[sTitle] || 50000;
+                        await fetch('/api/services', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            vehicleId: activeVehicle.id,
+                            customerId: userId,
+                            serviceType: sTitle,
+                            cost: cost,
+                            bookingDate: new Date().toISOString(),
+                            diagnosticNotes: `Selected by customer via Workshop Service Selection: ${sTitle}`,
+                          }),
+                        });
+                      }
+                      onRefreshAll();
+                      const count = selectedServiceCatalog.length;
+                      setSelectedServiceCatalog([]);
+                      setServiceNotificationBanner({
+                        type: 'success',
+                        message: `🎉 Successfully booked ${count} service(s) at workshop for vehicle ${activeVehicle.registrationNumber}!`,
+                      });
+                    } catch (e) {
+                      console.error(e);
+                    }
+                  }}
+                  className={`py-2.5 px-4 font-black text-xs rounded-xl shadow transition cursor-pointer flex items-center justify-center gap-1.5 ${
+                    selectedServiceCatalog.length > 0 && !isHomeServiceMode
+                      ? 'bg-emerald-500 hover:bg-emerald-400 text-slate-950'
+                      : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+                  }`}
+                >
+                  <CheckCircle2 className="w-4 h-4 text-slate-950" />
+                  <span>Confirm Workshop Booking ({selectedServiceCatalog.length})</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -2463,31 +2542,72 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
                     No service history recorded for this vehicle yet.
                   </div>
                 ) : (
-                  <div className="space-y-2.5 max-h-[350px] overflow-y-auto pr-1">
+                  <div className="space-y-3 max-h-[450px] overflow-y-auto pr-1">
                     {customerServices
                       .filter((s) => !historySearchQuery || s.serviceType.toLowerCase().includes(historySearchQuery.toLowerCase()) || (s.diagnosticNotes || '').toLowerCase().includes(historySearchQuery.toLowerCase()))
-                      .map((srv) => (
-                        <div key={srv.id} className="p-3.5 bg-slate-50 border border-slate-200/90 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-emerald-300 transition">
-                          <div className="space-y-1">
-                            <div className="flex items-center gap-2">
-                              <span className="font-extrabold text-xs text-slate-900">{srv.serviceType}</span>
-                              <span className="px-2 py-0.2 rounded-full text-3xs font-mono font-bold bg-emerald-100 text-emerald-800">
-                                {srv.status}
-                              </span>
+                      .map((srv) => {
+                        const techName = srv.technicianId ? `Technician (#${srv.technicianId.slice(-4)})` : 'Samuel Mukasa (Cert. Tech)';
+                        const managerName = 'Denis Okello (Service Mgr)';
+                        const labourFee = srv.labourCost !== undefined ? srv.labourCost : 50000;
+                        const partsAlloc = srv.partsAllocated && srv.partsAllocated.length > 0
+                          ? srv.partsAllocated.map((p) => `${p.partName} (x${p.quantity})`).join(', ')
+                          : 'Standard Maintenance Consumables';
+                        const isPaid = isPaymentSettled || srv.status === ServiceStatus.COMPLETED;
+
+                        return (
+                          <div key={srv.id} className="p-4 bg-slate-50 border border-slate-200/90 rounded-xl space-y-2 hover:border-emerald-300 transition shadow-2xs">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200/60 pb-2">
+                              <div>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="font-extrabold text-xs text-slate-900">{srv.serviceType}</span>
+                                  <span className={`px-2 py-0.5 rounded-full text-3xs font-mono font-bold ${
+                                    srv.status === ServiceStatus.COMPLETED ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                                  }`}>
+                                    Job Status: {srv.status}
+                                  </span>
+                                  <span className={`px-2 py-0.5 rounded-full text-3xs font-mono font-bold ${
+                                    isPaid ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
+                                  }`}>
+                                    Payment: {isPaid ? 'Paid ✓' : 'Pending Invoice'}
+                                  </span>
+                                </div>
+                                <p className="text-3xs text-slate-500 font-mono mt-0.5">
+                                  📅 Date: {new Date(srv.bookingDate).toLocaleDateString()} • Vehicle: {activeVehicle?.registrationNumber || 'Car'}
+                                </p>
+                              </div>
+                              <div className="text-left sm:text-right shrink-0">
+                                <span className="font-mono font-black text-slate-900 text-sm block">UGX {srv.cost.toLocaleString()}</span>
+                                <span className="text-3xs text-slate-400 font-mono block">Total Cost</span>
+                              </div>
                             </div>
-                            <p className="text-3xs text-slate-500 font-mono">
-                              Date: {new Date(srv.bookingDate).toLocaleDateString()} • Vehicle: {activeVehicle?.registrationNumber || 'Car'}
-                            </p>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 text-3xs font-mono pt-1">
+                              <div>
+                                <span className="text-slate-400 block uppercase font-bold">Requested Services</span>
+                                <span className="font-bold text-slate-800">{srv.selectedServicesList?.map((s) => s.title).join(', ') || srv.serviceType}</span>
+                              </div>
+                              <div>
+                                <span className="text-slate-400 block uppercase font-bold">Labour Charges</span>
+                                <span className="font-bold text-slate-800">UGX {labourFee.toLocaleString()}</span>
+                              </div>
+                              <div>
+                                <span className="text-slate-400 block uppercase font-bold">Spare Parts Used</span>
+                                <span className="font-bold text-slate-800 truncate block" title={partsAlloc}>{partsAlloc}</span>
+                              </div>
+                              <div>
+                                <span className="text-slate-400 block uppercase font-bold">Assigned Staff</span>
+                                <span className="font-bold text-slate-800">Tech: {techName} • Mgr: {managerName}</span>
+                              </div>
+                            </div>
+
                             {srv.diagnosticNotes && (
-                              <p className="text-3xs text-slate-700 italic">Notes: "{srv.diagnosticNotes}"</p>
+                              <p className="text-3xs text-slate-600 italic bg-white p-2 rounded border border-slate-100">
+                                Notes: &quot;{srv.diagnosticNotes}&quot;
+                              </p>
                             )}
                           </div>
-                          <div className="text-right shrink-0">
-                            <span className="font-mono font-black text-slate-900 text-xs block">UGX {srv.cost.toLocaleString()}</span>
-                            <span className="text-3xs text-emerald-600 font-bold font-mono block">Verified Service</span>
-                          </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                   </div>
                 )}
               </div>
@@ -2721,37 +2841,26 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
               </div>
             </div>
 
-            {/* Service Invoice Status Notice */}
-            {hasPendingServices && (
-              <div className="p-3 bg-amber-50 border border-amber-300 text-amber-900 rounded-xl text-xs space-y-1 font-medium">
-                <div className="flex items-center gap-1.5 font-bold text-amber-900">
-                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
-                  <span>Service Invoice Pending Completion</span>
-                </div>
-                <p className="text-3xs text-amber-800 leading-relaxed">
-                  Service invoices remain pending while the vehicle is being serviced. A service invoice becomes payable only after all assigned services have been completed and marked complete by the Service Manager.
-                </p>
-              </div>
-            )}
+            {/* Advance Payment Banner */}
+            <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-xl text-xs flex items-center gap-2 font-medium">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>Advance payments are welcomed at any time (before, during, or after service completion).</span>
+            </div>
 
             {/* Action Button */}
             <button
-              disabled={isPaymentSettled || hasPendingServices}
+              disabled={isPaymentSettled}
               onClick={() => setShowPayNowModal(true)}
-              className={`w-full py-3 px-4 text-white font-bold text-xs rounded-xl shadow-xs transition duration-150 flex items-center justify-center gap-1.5 ${
+              className={`w-full py-3.5 px-4 text-white font-extrabold text-xs rounded-xl shadow-md transition duration-150 flex items-center justify-center gap-2 ${
                 isPaymentSettled
                   ? 'bg-slate-300 cursor-not-allowed text-slate-600'
-                  : hasPendingServices
-                  ? 'bg-amber-100 text-amber-900 border border-amber-300 cursor-not-allowed'
-                  : 'bg-emerald-600 hover:bg-emerald-700 cursor-pointer'
+                  : 'bg-emerald-600 hover:bg-emerald-700 cursor-pointer shadow-lg'
               }`}
             >
               <CreditCard className="w-4 h-4" />
               <span>
                 {isPaymentSettled
                   ? 'Vehicle Invoice Settled & Cleared ✓'
-                  : hasPendingServices
-                  ? '🔒 Service In Progress — Cannot settle service invoice until marked complete by Service Manager'
                   : `Pay Vehicle Invoice (UGX ${totalCalculatedCostUGX.toLocaleString()})`}
               </span>
             </button>
@@ -4440,70 +4549,55 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
                 </select>
               </div>
 
-              {/* Service Package Selection */}
+              {/* Selected Services Summary (Mandatory selected from Service Selection Matrix) */}
               <div>
-                <label className="block text-3xs font-mono font-bold uppercase text-slate-300 mb-1">
-                  Select Home Maintenance Service Package
+                <label className="block text-3xs font-mono font-bold uppercase text-slate-300 mb-1 flex items-center justify-between">
+                  <span>Selected Vehicle Services for Home Delivery</span>
+                  <span className="text-emerald-400 font-extrabold">{selectedServiceCatalog.length} Selected</span>
                 </label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {[
-                    {
-                      name: 'Mobile Oil Change & Filter (Castrol Synth)',
-                      cost: 150000,
-                      icon: '🛢️',
-                      desc: 'Engine oil replacement, oil filter, multi-point diagnostic safety check.',
-                    },
-                    {
-                      name: 'Home Brake Service & Pad Renewal',
-                      cost: 180000,
-                      icon: '🛑',
-                      desc: 'Front/rear brake pad replacement, fluid top-up, rotor inspection.',
-                    },
-                    {
-                      name: 'Doorstep Battery Replacement & Jumpstart',
-                      cost: 210000,
-                      icon: '🔋',
-                      desc: 'Heavy-duty maintenance-free 12V battery + installation & testing.',
-                    },
-                    {
-                      name: 'Mobile Computerized OBD Diagnostic Scan',
-                      cost: 95000,
-                      icon: '💻',
-                      desc: 'Full ECU fault code diagnosis, sensor calibration, electronic report.',
-                    },
-                  ].map((pkg) => {
-                    const isSel = homeServicePackage === pkg.name;
-                    return (
-                      <div
-                        key={pkg.name}
-                        onClick={() => setHomeServicePackage(pkg.name)}
-                        className={`p-3 rounded-xl border text-left cursor-pointer transition flex flex-col justify-between ${
-                          isSel
-                            ? 'bg-blue-900/50 border-blue-400 ring-1 ring-blue-500/40 shadow-sm'
-                            : 'bg-slate-800/60 border-slate-700 hover:bg-slate-800'
-                        }`}
-                      >
-                        <div>
-                          <div className="flex items-center justify-between text-3xs font-mono">
-                            <span className="font-bold text-blue-300">{pkg.icon} Mobile Service</span>
-                            <span className="font-black text-emerald-400">UGX {pkg.cost.toLocaleString()}</span>
+                {selectedServiceCatalog.length === 0 ? (
+                  <div className="p-3 bg-amber-950/80 border border-amber-500/50 text-amber-300 rounded-xl text-xs font-bold space-y-2">
+                    <p>⚠️ No services selected. Home Service is a delivery mode for chosen vehicle services.</p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowHomeServiceModal(false);
+                        setIsHomeServiceMode(true);
+                        setActiveTab('services');
+                      }}
+                      className="px-3 py-1 bg-amber-500 text-slate-950 rounded-lg text-xs font-extrabold cursor-pointer"
+                    >
+                      ← Select Services First
+                    </button>
+                  </div>
+                ) : (
+                  <div className="bg-slate-800/80 border border-slate-700/80 rounded-xl p-3 space-y-2">
+                    <div className="flex flex-wrap gap-1.5">
+                      {selectedServiceCatalog.map((sName) => {
+                        const SERVICE_CATALOG_COSTS: Record<string, number> = {
+                          'Full Oil & Filter Change': 80000,
+                          'Eco Foam Car Wash & Vacuum': 25000,
+                          'Brake Pad & Rotor Inspection': 120000,
+                          'Engine Diagnostics & Scan': 50000,
+                          'Wheel Alignment & Balancing': 45000,
+                          'AC Servicing & Gas Refill': 90000,
+                          'Battery Health Test & Service': 35000,
+                          'Suspension & Shock Service': 110000,
+                        };
+                        const cost = SERVICE_CATALOG_COSTS[sName] || 50000;
+                        return (
+                          <div key={sName} className="px-2.5 py-1 bg-slate-900 border border-blue-500/40 rounded-lg text-xs flex items-center gap-2">
+                            <span className="font-semibold text-white">{sName}</span>
+                            <span className="font-mono text-emerald-400 font-bold text-3xs">UGX {cost.toLocaleString()}</span>
                           </div>
-                          <h4 className="text-xs font-bold text-white mt-1 leading-snug">{pkg.name}</h4>
-                          <p className="text-3xs text-slate-300 mt-1 leading-snug">{pkg.desc}</p>
-                        </div>
-                        <div className="mt-2 text-right">
-                          <span
-                            className={`text-3xs font-mono font-bold px-2 py-0.5 rounded ${
-                              isSel ? 'bg-blue-500 text-white' : 'bg-slate-700 text-slate-400'
-                            }`}
-                          >
-                            {isSel ? '✓ Selected' : 'Choose'}
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
+                        );
+                      })}
+                    </div>
+                    <p className="text-3xs text-slate-400 font-mono">
+                      Delivery fee: <span className="text-emerald-400 font-bold">UGX 0 (Free Doorstep Service)</span>
+                    </p>
+                  </div>
+                )}
               </div>
 
               {/* Location Details */}
@@ -4615,8 +4709,26 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
               {/* Action Buttons */}
               <div className="bg-slate-800/80 p-3.5 rounded-xl border border-slate-700 flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
                 <div>
-                  <span className="text-3xs font-mono text-slate-400 block uppercase">Estimated Home Dispatch Rate</span>
-                  <span className="text-base font-black text-emerald-400 font-mono">UGX 150,000</span>
+                  <span className="text-3xs font-mono text-slate-400 block uppercase">Booking Type: HOME SERVICE (UGX 0 Delivery Fee)</span>
+                  <span className="text-base font-black text-emerald-400 font-mono">
+                    UGX {
+                      (() => {
+                        const SERVICE_CATALOG_COSTS: Record<string, number> = {
+                          'Full Oil & Filter Change': 80000,
+                          'Eco Foam Car Wash & Vacuum': 25000,
+                          'Brake Pad & Rotor Inspection': 120000,
+                          'Engine Diagnostics & Scan': 50000,
+                          'Wheel Alignment & Balancing': 45000,
+                          'AC Servicing & Gas Refill': 90000,
+                          'Battery Health Test & Service': 35000,
+                          'Suspension & Shock Service': 110000,
+                        };
+                        return selectedServiceCatalog
+                          .reduce((acc, s) => acc + (SERVICE_CATALOG_COSTS[s] || 50000), 0)
+                          .toLocaleString();
+                      })()
+                    }
+                  </span>
                 </div>
 
                 <div className="flex items-center gap-2">
@@ -4630,8 +4742,8 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
 
                   <button
                     type="submit"
-                    disabled={isSubmittingHomeService}
-                    className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-xs rounded-xl shadow-lg transition cursor-pointer flex items-center justify-center gap-2"
+                    disabled={isSubmittingHomeService || selectedServiceCatalog.length === 0}
+                    className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-xs rounded-xl shadow-lg transition cursor-pointer flex items-center justify-center gap-2 disabled:bg-slate-700 disabled:text-slate-400 disabled:cursor-not-allowed"
                   >
                     {isSubmittingHomeService ? (
                       <span className="flex items-center gap-2">

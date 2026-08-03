@@ -1732,10 +1732,54 @@ app.post('/api/vehicles', async (req, res) => {
 
 app.delete('/api/vehicles/:id', async (req, res) => {
   const { id } = req.params;
-  const idx = vehicles.findIndex((v) => v.id === id || toUuid(v.id) === id || toUuid(v.id) === toUuid(id));
-  if (idx === -1) {
+  const targetVeh = vehicles.find((v) => v.id === id || toUuid(v.id) === id || toUuid(v.id) === toUuid(id));
+  if (!targetVeh) {
     return res.status(404).json({ error: 'Vehicle not found' });
   }
+
+  // Strict Vehicle Deletion Rules Check (Requirement 4)
+  const activeReasons: string[] = [];
+
+  // 1. Check for Active / Pending Parking Reservations
+  const activeRes = reservations.filter(
+    (r) =>
+      (r.vehicleId === targetVeh.id || toUuid(r.vehicleId) === toUuid(targetVeh.id)) &&
+      (r.status === ReservationStatus.PENDING || r.status === ReservationStatus.ACTIVE)
+  );
+  if (activeRes.length > 0) {
+    activeReasons.push(`Active Parking Reservation (${activeRes.length} active session)`);
+  }
+
+  // 2. Check if currently parked in a slot
+  const occupiedSpot = parkingSpaces.find(
+    (s) => (s as any).assignedVehicleId === targetVeh.id || (s as any).vehicleReg === targetVeh.registrationNumber
+  );
+  if (occupiedSpot && occupiedSpot.status === ParkingSpaceStatus.OCCUPIED) {
+    activeReasons.push(`Currently Parked in Slot ${occupiedSpot.spaceNumber}`);
+  }
+
+  // 3. Check for Pending/Active Workshop or Home Services
+  const activeSrvs = services.filter(
+    (s) =>
+      (s.vehicleId === targetVeh.id || toUuid(s.vehicleId) === toUuid(targetVeh.id)) &&
+      s.status !== ServiceStatus.COMPLETED
+  );
+  if (activeSrvs.length > 0) {
+    const srvDetails = activeSrvs.map((s) => `"${s.serviceType}" (${s.status})`).join(', ');
+    activeReasons.push(`Active Service/Job in progress: ${srvDetails}`);
+  }
+
+  if (activeReasons.length > 0) {
+    return res.status(400).json({
+      error: `Cannot delete vehicle ${targetVeh.registrationNumber}: Vehicle has active operations.`,
+      activeOperations: activeReasons,
+      details: activeReasons.join(' • '),
+    });
+  }
+
+  // Remove vehicle record from active vehicles list.
+  // Note: Historical completed services, invoices, and payments remain archived in memory & DB (Requirement 5).
+  const idx = vehicles.findIndex((v) => v.id === targetVeh.id);
   const removed = vehicles.splice(idx, 1)[0];
 
   if (supabase) {
@@ -1749,7 +1793,11 @@ app.delete('/api/vehicles/:id', async (req, res) => {
     }
   }
 
-  res.json({ success: true, message: `Vehicle ${removed.registrationNumber} deleted`, vehicle: removed });
+  res.json({
+    success: true,
+    message: `Vehicle ${removed.registrationNumber} deleted successfully. Historical records preserved.`,
+    vehicle: removed,
+  });
 });
 
 // Parking Spaces API
@@ -1987,6 +2035,12 @@ app.post('/api/services', async (req, res) => {
     homeCity,
     homeLandmark,
     contactPhone,
+    visitDate,
+    visitTime,
+    homeServiceFee,
+    selectedServicesList,
+    labourCost,
+    partsAllocated,
   } = req.body;
 
   if (!vehicleId || !serviceType || !bookingDate) {
@@ -2002,7 +2056,7 @@ app.post('/api/services', async (req, res) => {
     customerId: customerId || 'usr-1',
     serviceType: isHomeService ? `🏠 Home Service: ${serviceType}` : serviceType,
     status: ServiceStatus.BOOKED,
-    cost: parseInt(cost) || (isHomeService ? 150000 : 120000),
+    cost: parseInt(cost) || 120000,
     bookingDate,
     diagnosticNotes: diagnosticNotes || (isHomeService ? `Home Servicing requested at: ${homeAddress || 'Customer address'}` : 'Appointment booked successfully.'),
     isHomeService: Boolean(isHomeService),
@@ -2010,6 +2064,12 @@ app.post('/api/services', async (req, res) => {
     homeCity,
     homeLandmark,
     contactPhone,
+    visitDate,
+    visitTime,
+    homeServiceFee: homeServiceFee ? parseInt(homeServiceFee) : 0,
+    selectedServicesList: selectedServicesList || [],
+    labourCost: labourCost ? parseInt(labourCost) : 0,
+    partsAllocated: partsAllocated || [],
   };
 
   services.push(newService);
@@ -2056,6 +2116,9 @@ app.put('/api/services/:id/status', async (req, res) => {
     assignedDeliveryBay,
     completionHandOffNotes,
     attendantHandoffStatus,
+    selectedServicesList,
+    labourCost,
+    partsAllocated,
   } = req.body;
 
   const service = services.find((s) => s.id === id);
@@ -2067,10 +2130,13 @@ app.put('/api/services/:id/status', async (req, res) => {
   if (status) service.status = status as ServiceStatus;
   if (technicianId) service.technicianId = technicianId;
   if (diagnosticNotes) service.diagnosticNotes = diagnosticNotes;
-  if (cost) service.cost = parseInt(cost);
+  if (cost !== undefined) service.cost = parseInt(cost);
   if (assignedDeliveryBay) service.assignedDeliveryBay = assignedDeliveryBay;
   if (completionHandOffNotes) service.completionHandOffNotes = completionHandOffNotes;
   if (attendantHandoffStatus) service.attendantHandoffStatus = attendantHandoffStatus;
+  if (selectedServicesList) service.selectedServicesList = selectedServicesList;
+  if (labourCost !== undefined) service.labourCost = parseInt(labourCost);
+  if (partsAllocated) service.partsAllocated = partsAllocated;
 
   // Mark completion & trigger multi-role hand-off notifications
   if (status === ServiceStatus.COMPLETED || status === ServiceStatus.READY_FOR_PICKUP) {
@@ -2201,6 +2267,35 @@ app.put('/api/services/:id/assignment', async (req, res) => {
     }
 
     return res.json({ success: true, message: `Assignment rejected. Service Manager notified to reassign.`, service });
+  } else if (assignmentStatus === 'Cancelled') {
+    service.assignmentStatus = 'Pending';
+    service.technicianId = undefined;
+    service.rejectionReason = rejectionReason || 'Duty cancelled by technician after initial acceptance.';
+    if (service.diagnosticNotes) {
+      service.diagnosticNotes += ` | [Duty Cancelled by Tech: ${rejectionReason || 'No reason provided'}]`;
+    } else {
+      service.diagnosticNotes = `[Duty Cancelled by Tech: ${rejectionReason || 'No reason provided'}]`;
+    }
+
+    notifications.unshift({
+      id: `notif-${notifications.length + 1}`,
+      type: 'SERVICE_REQUEST',
+      title: '🚨 Accepted Duty Cancelled by Technician',
+      message: `Technician ${techName} CANCELLED accepted duty for "${service.serviceType}" (${regNo}). Reason: "${rejectionReason || 'N/A'}". Job returned to Service Manager pool for reassignment.`,
+      timestamp: new Date().toISOString(),
+      vehicleReg: regNo,
+      read: false,
+    });
+
+    if (supabase) {
+      try {
+        await supabase.from('vehicle_services').upsert(mapServiceToDb(service));
+      } catch (e) {
+        console.error('Supabase service cancellation error:', e);
+      }
+    }
+
+    return res.json({ success: true, message: `Duty cancelled. Returned to Service Manager for reassignment.`, service });
   }
 
   res.status(400).json({ error: 'Invalid assignment status.' });
