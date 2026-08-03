@@ -755,7 +755,36 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
   };
 
   const handleCreateHomeServiceRequest = (e: React.FormEvent) => {
-    handleConfirmServiceOrder(e);
+    e.preventDefault();
+    if (selectedServiceCatalog.length === 0) {
+      setServiceNotificationBanner({
+        type: 'warning',
+        message: '⚠️ Please select at least one vehicle service before submitting your doorstep request.',
+      });
+      return;
+    }
+    if (!homeServiceAddress.trim()) {
+      setServiceNotificationBanner({
+        type: 'warning',
+        message: '⚠️ Please provide a delivery address for your doorstep home service.',
+      });
+      return;
+    }
+    if (!homeServicePhone.trim()) {
+      setServiceNotificationBanner({
+        type: 'warning',
+        message: '⚠️ Please provide a contact phone number for technician dispatch.',
+      });
+      return;
+    }
+    if (!homeServiceDate) {
+      setServiceNotificationBanner({
+        type: 'warning',
+        message: '⚠️ Please select a preferred visit date.',
+      });
+      return;
+    }
+    setShowConfirmOrderModal(true);
   };
   const [carWashTimeSlot, setCarWashTimeSlot] = useState<string>('Now while parked');
   const [carWashSpecialNotes, setCarWashSpecialNotes] = useState<string>('');
