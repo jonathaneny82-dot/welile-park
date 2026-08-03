@@ -510,9 +510,10 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
   const [carWashPackageName, setCarWashPackageName] = useState<string>('Executive Foam Wash & Wax');
   const [carWashCostUGX, setCarWashCostUGX] = useState<number>(25000);
 
-  // Home Car Servicing Request Modal State
+  // Home Car Servicing Request Full-Screen Stage State
   const [showHomeServiceModal, setShowHomeServiceModal] = useState<boolean>(false);
   const [isHomeServiceMode, setIsHomeServiceMode] = useState<boolean>(false);
+  const [homeServiceStage, setHomeServiceStage] = useState<'selection' | 'location'>('selection');
   const [homeServiceVehicleId, setHomeServiceVehicleId] = useState<string>('');
   const [homeServicePackage, setHomeServicePackage] = useState<string>('');
   const [homeServiceAddress, setHomeServiceAddress] = useState<string>('Plot 42 Naguru Drive, Ntinda-Naguru');
@@ -675,7 +676,9 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
       progress: 'Not Started',
     }));
 
-    const totalCalculatedCost = selectedServicesList.reduce((sum, item) => sum + item.cost, 0);
+    const transportFee = 20000;
+    const servicesTotal = selectedServicesList.reduce((sum, item) => sum + item.cost, 0);
+    const totalCalculatedCost = servicesTotal + transportFee;
 
     try {
       const res = await fetch('/api/services', {
@@ -695,7 +698,7 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
           contactPhone: homeServicePhone,
           visitDate: homeServiceDate,
           visitTime: homeServiceTimeSlot,
-          homeServiceFee: 0,
+          homeServiceFee: transportFee,
           selectedServicesList: selectedServicesList,
         }),
       });
@@ -704,14 +707,15 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
         setIsSubmittingHomeService(false);
         setShowHomeServiceModal(false);
         setIsHomeServiceMode(false);
+        setHomeServiceStage('selection');
         const bookedCount = selectedServicesList.length;
         setSelectedServiceCatalog([]);
         onRefreshAll();
         setActiveTab('overview');
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+        window.scrollTo({ top: 0, behavior: 'instant' });
         setServiceNotificationBanner({
           type: 'success',
-          message: `🎉 Home Service Booking & Invoice created for ${bookedCount} service(s)! Total: UGX ${totalCalculatedCost.toLocaleString()} (0 Home Visit Fee). Service Manager will assign a technician.`,
+          message: `🎉 Home Service Booking & Invoice created for ${bookedCount} service(s)! Total: UGX ${totalCalculatedCost.toLocaleString()} (Includes UGX 20,000 Transport Fee). Service Manager will assign a technician.`,
         });
       } else {
         alert('Failed to send home service request.');
@@ -835,10 +839,10 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
   // Multi-service selection catalog state (users can select/unselect freely before submitting booking)
   const [selectedServiceCatalog, setSelectedServiceCatalog] = useState<string[]>([]);
 
-  // Scroll to top immediately whenever activeTab changes
+  // Scroll to top immediately whenever activeTab or homeServiceStage changes
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'instant' });
-  }, [activeTab]);
+  }, [activeTab, homeServiceStage]);
 
   // Secondary Tools (Expandable drawers for vehicle management and nationwide yards)
   const [showVehicleManager, setShowVehicleManager] = useState<boolean>(false);
@@ -888,26 +892,66 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
     // 2. Rendered / Requested Services from backend for THIS vehicle (Deduplicated by Service Type)
     if (customerServices.length > 0) {
       customerServices.forEach((srv) => {
-        let cat = 'Garage Service';
-        const st = srv.serviceType.toLowerCase();
-        if (st.includes('wash')) cat = 'Car Wash';
-        else if (st.includes('oil')) cat = 'Oil Change';
-        else if (st.includes('charging') || st.includes('ev')) cat = 'EV Charging';
-
         const isPendingSrv = srv.status !== ServiceStatus.COMPLETED && srv.status !== ServiceStatus.READY_FOR_PICKUP;
         const titleKey = `${srv.serviceType.trim().toLowerCase()}_${(srv.vehicleId || '').toString()}`;
 
         if (!seenTitles.has(titleKey)) {
           seenTitles.add(titleKey);
-          list.push({
-            id: srv.id,
-            title: srv.serviceType,
-            category: cat,
-            vehicleReg: activeVehicle?.registrationNumber || 'Vehicle',
-            cost: srv.cost || 25000,
-            details: srv.diagnosticNotes || `Status: ${srv.status}`,
-            isPending: isPendingSrv,
-          });
+
+          if (srv.isHomeService || srv.serviceType.toLowerCase().includes('home service')) {
+            const homeFee = srv.homeServiceFee !== undefined && srv.homeServiceFee > 0 ? srv.homeServiceFee : 20000;
+            if (srv.selectedServicesList && srv.selectedServicesList.length > 0) {
+              srv.selectedServicesList.forEach((subItem, idx) => {
+                list.push({
+                  id: `${srv.id}-sub-${idx}`,
+                  title: subItem.title,
+                  category: 'Vehicle Service',
+                  vehicleReg: activeVehicle?.registrationNumber || 'Vehicle',
+                  cost: subItem.cost,
+                  details: `Home Service Requested Item • Status: ${srv.status}`,
+                  isPending: isPendingSrv,
+                });
+              });
+            } else {
+              const servicesPortion = Math.max(0, srv.cost - homeFee);
+              list.push({
+                id: `${srv.id}-base`,
+                title: srv.serviceType.replace('🏠 Home Service: ', ''),
+                category: 'Vehicle Service',
+                vehicleReg: activeVehicle?.registrationNumber || 'Vehicle',
+                cost: servicesPortion > 0 ? servicesPortion : srv.cost,
+                details: srv.diagnosticNotes || `Status: ${srv.status}`,
+                isPending: isPendingSrv,
+              });
+            }
+
+            // Always add the itemized Home Service Transport Fee
+            list.push({
+              id: `${srv.id}-transport-fee`,
+              title: 'Home Service Transport Fee',
+              category: 'Transport Fee',
+              vehicleReg: activeVehicle?.registrationNumber || 'Vehicle',
+              cost: homeFee,
+              details: 'Doorstep Technician Visit & Delivery Transport Fee (Paid to Mechanic)',
+              isPending: isPendingSrv,
+            });
+          } else {
+            let cat = 'Garage Service';
+            const st = srv.serviceType.toLowerCase();
+            if (st.includes('wash')) cat = 'Car Wash';
+            else if (st.includes('oil')) cat = 'Oil Change';
+            else if (st.includes('charging') || st.includes('ev')) cat = 'EV Charging';
+
+            list.push({
+              id: srv.id,
+              title: srv.serviceType,
+              category: cat,
+              vehicleReg: activeVehicle?.registrationNumber || 'Vehicle',
+              cost: srv.cost || 25000,
+              details: srv.diagnosticNotes || `Status: ${srv.status}`,
+              isPending: isPendingSrv,
+            });
+          }
         }
       });
     }
@@ -1022,6 +1066,12 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
 
   // 4. Pay Now Action (Consolidated Single Payment for All Services Rendered)
   const handleProcessPayment = async () => {
+    if (isPaymentSettled) {
+      setPaySuccessMsg("This invoice has already been paid. No further payment is required.");
+      alert("This invoice has already been paid. No further payment is required.");
+      return;
+    }
+
     setIsProcessingPay(true);
     setPaySuccessMsg('');
     const totalAmountToPay = totalCalculatedCostUGX;
@@ -1688,35 +1738,25 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
         </div>
       )}
 
-      {/* DEDICATED HOME SERVICE CARD (Positioned below the main service cards) */}
-      <div className="bg-gradient-to-r from-blue-950 via-indigo-900 to-slate-900 border border-blue-500/40 rounded-2xl p-4 sm:p-5 text-white shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-4 my-4">
-        <div className="flex items-start sm:items-center gap-3.5">
-          <div className="w-11 h-11 rounded-2xl bg-blue-600/30 border border-blue-400 flex items-center justify-center text-2xl shrink-0 shadow-xs">
+      {/* MINIMIZED COMPACT HOME SERVICE CARD (Positioned strictly below main service cards on Customer Home Dashboard) */}
+      <div className="bg-slate-900 border border-slate-800 rounded-xl p-3 text-white shadow-sm flex items-center justify-between gap-3 my-3">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-lg bg-blue-500/20 border border-blue-400/30 flex items-center justify-center text-base shrink-0">
             🏠
           </div>
-          <div className="space-y-1">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="px-2 py-0.5 rounded bg-blue-500/30 text-blue-300 text-3xs font-mono font-bold uppercase tracking-wider border border-blue-400/30">
-                Doorstep Maintenance Mode
-              </span>
-              <span className="text-3xs font-mono text-emerald-400 font-extrabold">UGX 0 Visit Delivery Fee</span>
-            </div>
-            <h3 className="text-sm sm:text-base font-black text-white">Doorstep Home Car Service</h3>
-            <p className="text-xs text-blue-200/90 leading-relaxed">
-              Have certified mechanics perform maintenance directly at your home or office address.
-            </p>
-          </div>
+          <h3 className="text-sm font-extrabold text-white">Home Service</h3>
         </div>
         <button
           onClick={() => {
             setIsHomeServiceMode(true);
+            setHomeServiceStage('selection');
             setActiveTab('services');
-            window.scrollTo({ top: 0, behavior: 'smooth' });
+            window.scrollTo({ top: 0, behavior: 'instant' });
           }}
-          className="px-5 py-2.5 bg-blue-500 hover:bg-blue-400 text-slate-950 font-black text-xs rounded-xl shadow-md transition cursor-pointer shrink-0 flex items-center justify-center gap-2"
+          className="px-3.5 py-1.5 bg-blue-500 hover:bg-blue-400 text-slate-950 font-black text-xs rounded-lg shadow-sm transition cursor-pointer shrink-0 flex items-center justify-center gap-1.5"
         >
           <span>Request Home Service</span>
-          <ArrowRight className="w-4 h-4 text-slate-950" />
+          <ArrowRight className="w-3.5 h-3.5 text-slate-950" />
         </button>
       </div>
 
@@ -2119,7 +2159,7 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
         <div className="space-y-6">
 
           {/* Dedicated "My Selected & Active Services" Panel with Unselect Action */}
-          <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm space-y-3">
+          <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-sm space-y-3">
             <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
               <div className="flex items-center gap-2">
                 <div className="p-1.5 bg-blue-100 text-blue-700 rounded-lg">
@@ -2129,7 +2169,6 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
                   <h2 className="text-xs font-mono font-bold uppercase tracking-wider text-slate-900">
                     My Selected & Active Services ({customerServices.length})
                   </h2>
-                  <p className="text-3xs text-slate-500">View your selected services or click "Unselect" to remove any unwanted service</p>
                 </div>
               </div>
               <span className="px-2.5 py-0.5 rounded-full text-3xs font-bold font-mono bg-emerald-100 text-emerald-800 uppercase">
@@ -2138,9 +2177,8 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
             </div>
 
             {customerServices.length === 0 ? (
-              <div className="p-4 bg-slate-50 rounded-xl text-center text-xs text-slate-500 border border-slate-200/80">
+              <div className="p-3 bg-slate-50 rounded-xl text-center text-xs text-slate-500 border border-slate-200/80">
                 <p className="font-semibold text-slate-700">No active services selected yet.</p>
-                <p className="text-3xs text-slate-400 mt-1">Request a Car Wash, Garage Mechanical Repair, or Home Servicing below to add a service.</p>
               </div>
             ) : (
               <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
@@ -2197,171 +2235,58 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
             )}
           </div>
 
-          {/* Flexible Multi-Service Selection Matrix */}
-          <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm space-y-4">
-            {/* Home Service Mode Alert Banner */}
-            {isHomeServiceMode && (
-              <div className="p-4 bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 border border-blue-400 text-white rounded-2xl shadow-md space-y-2 animate-fadeIn">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-blue-500/30 border border-blue-400 flex items-center justify-center text-xl shrink-0">
-                      🏠
-                    </div>
-                    <div>
-                      <h3 className="text-xs sm:text-sm font-extrabold text-white flex items-center gap-2">
-                        <span>HOME SERVICE SELECTION MODE</span>
-                        <span className="px-2 py-0.5 rounded bg-emerald-500/30 text-emerald-300 font-mono text-3xs uppercase font-bold">UGX 0 Delivery Fee</span>
-                      </h3>
-                      <p className="text-xs text-blue-200">
-                        Select one or more vehicle services below. Once selected, tap "Proceed to Home Location Details" to specify address & schedule.
-                      </p>
-                    </div>
-                  </div>
+          {/* HOME LOCATION DETAILS STANDALONE FULL PAGE OR SELECTION MATRIX */}
+          {isHomeServiceMode && homeServiceStage === 'location' ? (
+            <div className="bg-slate-900 text-white rounded-2xl p-4 sm:p-6 shadow-xl border border-blue-500/40 space-y-5 animate-fadeIn">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-4">
+                <div className="flex items-center gap-3">
                   <button
-                    onClick={() => setIsHomeServiceMode(false)}
-                    className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-3xs font-bold rounded-lg border border-slate-700 transition cursor-pointer shrink-0"
+                    type="button"
+                    onClick={() => {
+                      setHomeServiceStage('selection');
+                      window.scrollTo({ top: 0, behavior: 'instant' });
+                    }}
+                    className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl transition cursor-pointer flex items-center gap-1.5 text-xs font-bold shrink-0"
                   >
-                    Switch to Workshop Booking
+                    <ArrowLeft className="w-4 h-4" />
+                    <span>Back to Service Selection</span>
                   </button>
+                  <div>
+                    <h2 className="text-base font-extrabold text-white flex items-center gap-2">
+                      <span>🏠 Home Service Location & Schedule</span>
+                    </h2>
+                    <p className="text-xs text-blue-300 font-mono">
+                      UGX 20,000 Doorstep Visit & Transport Fee Included
+                    </p>
+                  </div>
+                </div>
+                <div className="text-left sm:text-right">
+                  <span className="text-3xs font-mono uppercase text-slate-400 block font-semibold">Total Estimated Charge</span>
+                  <span className="text-lg font-black font-mono text-emerald-400">
+                    UGX {
+                      (selectedServiceCatalog.reduce((acc, sTitle) => {
+                        const SERVICE_CATALOG_COSTS: Record<string, number> = {
+                          'Full Oil & Filter Change': 80000,
+                          'Eco Foam Car Wash & Vacuum': 25000,
+                          'Brake Pad & Rotor Inspection': 120000,
+                          'Engine Diagnostics & Scan': 50000,
+                          'Wheel Alignment & Balancing': 45000,
+                          'AC Servicing & Gas Refill': 90000,
+                          'Battery Health Test & Service': 35000,
+                          'Suspension & Shock Service': 110000,
+                        };
+                        return acc + (SERVICE_CATALOG_COSTS[sTitle] || 50000);
+                      }, 0) + 20000).toLocaleString()
+                    }
+                  </span>
                 </div>
               </div>
-            )}
 
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
-              <div>
-                <h2 className="text-xs font-mono font-bold uppercase tracking-wider text-slate-900 flex items-center gap-1.5">
-                  <Wrench className="w-4 h-4 text-emerald-600" />
-                  AVAILABLE VEHICLE SERVICES SELECTION MATRIX
-                </h2>
-                <p className="text-3xs text-slate-500 mt-0.5">
-                  Select or unselect any available services freely before confirming your booking.
-                </p>
-              </div>
-              <span className="px-2.5 py-1 rounded-full text-3xs font-bold font-mono bg-emerald-100 text-emerald-800 uppercase self-start sm:self-center">
-                {selectedServiceCatalog.length} Services Selected
-              </span>
-            </div>
-
-            {/* Service Checkbox Matrix Grid */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5">
-              {[
-                { id: 'oil', title: 'Full Oil & Filter Change', cost: 80000, desc: 'Synthetic motor oil replacement, oil filter & engine inspection', icon: '🛢️' },
-                { id: 'wash', title: 'Eco Foam Car Wash & Vacuum', cost: 25000, desc: 'Snow foam wash, interior vacuum, tire shine & window polish', icon: '🫧' },
-                { id: 'brakes', title: 'Brake Pad & Rotor Inspection', cost: 120000, desc: 'Brake fluid check, pad replacement & rotor resurfacing', icon: '🛑' },
-                { id: 'engine', title: 'Engine Diagnostics & Scan', cost: 50000, desc: 'OBD-II computer fault scan, sensor test & error code clear', icon: '💻' },
-                { id: 'wheels', title: 'Wheel Alignment & Balancing', cost: 45000, desc: '4-wheel laser alignment, tire balancing & pressure check', icon: '🛞' },
-                { id: 'ac', title: 'AC Servicing & Gas Refill', cost: 90000, desc: 'Cabin filter clean, refrigerant gas refill & compressor check', icon: '❄️' },
-                { id: 'battery', title: 'Battery Health Test & Service', cost: 35000, desc: 'Voltage testing, terminal cleaning & alternator check', icon: '🔋' },
-                { id: 'suspension', title: 'Suspension & Shock Service', cost: 110000, desc: 'Bushings check, strut inspection & noise diagnostics', icon: '🔩' },
-              ].map((srvItem) => {
-                const isChecked = selectedServiceCatalog.includes(srvItem.title);
-                return (
-                  <div
-                    key={srvItem.id}
-                    onClick={() => {
-                      if (isChecked) {
-                        setSelectedServiceCatalog((prev) => prev.filter((t) => t !== srvItem.title));
-                        setServiceNotificationBanner({
-                          type: 'info',
-                          message: `Unselected service "${srvItem.title}".`,
-                        });
-                      } else {
-                        setSelectedServiceCatalog((prev) => [...prev, srvItem.title]);
-                        setServiceNotificationBanner({
-                          type: 'success',
-                          message: `Selected service "${srvItem.title}"! (UGX ${srvItem.cost.toLocaleString()})`,
-                        });
-                      }
-                    }}
-                    className={`p-3.5 rounded-xl border transition cursor-pointer flex flex-col justify-between space-y-2.5 ${
-                      isChecked
-                        ? 'bg-emerald-50/80 border-emerald-500 shadow-sm ring-1 ring-emerald-400'
-                        : 'bg-slate-50 border-slate-200 hover:bg-slate-100 hover:border-slate-300'
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xl">{srvItem.icon}</span>
-                        <div>
-                          <h3 className="text-xs font-extrabold text-slate-900">{srvItem.title}</h3>
-                          <span className="text-3xs font-mono font-bold text-emerald-700 block mt-0.5">
-                            UGX {srvItem.cost.toLocaleString()}
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className={`w-5 h-5 rounded-md flex items-center justify-center shrink-0 text-white font-bold text-xs transition ${
-                        isChecked ? 'bg-emerald-600' : 'border border-slate-300 bg-white'
-                      }`}>
-                        {isChecked && '✓'}
-                      </div>
-                    </div>
-
-                    <p className="text-3xs text-slate-600 leading-relaxed">{srvItem.desc}</p>
-
-                    <div className="flex items-center justify-between pt-1 border-t border-slate-200/60 text-3xs font-bold">
-                      <span className={isChecked ? 'text-emerald-700' : 'text-slate-400'}>
-                        {isChecked ? 'Selected for Booking' : 'Click to Select'}
-                      </span>
-                      <span className="text-slate-500 underline">
-                        {isChecked ? 'Unselect' : 'Select'}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Batch Submission Bar for Selected Services */}
-            <div className="bg-slate-900 text-white p-4 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-md">
-              <div>
-                <span className="text-3xs uppercase font-mono text-slate-400 block font-bold">Total Estimated Selected Services</span>
-                <span className="text-xl font-black font-mono text-emerald-400">
-                  UGX {
-                    [
-                      { title: 'Full Oil & Filter Change', cost: 80000 },
-                      { title: 'Eco Foam Car Wash & Vacuum', cost: 25000 },
-                      { title: 'Brake Pad & Rotor Inspection', cost: 120000 },
-                      { title: 'Engine Diagnostics & Scan', cost: 50000 },
-                      { title: 'Wheel Alignment & Balancing', cost: 45000 },
-                      { title: 'AC Servicing & Gas Refill', cost: 90000 },
-                      { title: 'Battery Health Test & Service', cost: 35000 },
-                      { title: 'Suspension & Shock Service', cost: 110000 },
-                    ]
-                      .filter((s) => selectedServiceCatalog.includes(s.title))
-                      .reduce((acc, s) => acc + s.cost, 0)
-                      .toLocaleString()
-                  }
-                </span>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  onClick={() => {
-                    if (selectedServiceCatalog.length === 0) {
-                      setServiceNotificationBanner({
-                        type: 'warning',
-                        message: '⚠️ Please select at least one vehicle service before requesting Home Service.',
-                      });
-                      return;
-                    }
-                    setShowHomeServiceModal(true);
-                  }}
-                  className={`py-2.5 px-4 font-black text-xs rounded-xl shadow transition cursor-pointer flex items-center justify-center gap-1.5 ${
-                    isHomeServiceMode || selectedServiceCatalog.length > 0
-                      ? 'bg-blue-500 hover:bg-blue-400 text-slate-950 font-black'
-                      : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-                  }`}
-                >
-                  <MapPin className="w-4 h-4 text-slate-950" />
-                  <span>Proceed to Home Location Details ({selectedServiceCatalog.length}) →</span>
-                </button>
-
-                <button
-                  disabled={selectedServiceCatalog.length === 0}
-                  onClick={async () => {
-                    if (!activeVehicle) return;
-                    try {
+              <form onSubmit={handleCreateHomeServiceRequest} className="space-y-4">
+                <div className="bg-slate-800/80 border border-slate-700 rounded-xl p-4 space-y-2">
+                  <h3 className="text-xs font-mono font-bold uppercase text-slate-300">Itemized Summary Breakdown</h3>
+                  <div className="space-y-1.5">
+                    {selectedServiceCatalog.map((sTitle) => {
                       const SERVICE_CATALOG_COSTS: Record<string, number> = {
                         'Full Oil & Filter Change': 80000,
                         'Eco Foam Car Wash & Vacuum': 25000,
@@ -2372,44 +2297,371 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
                         'Battery Health Test & Service': 35000,
                         'Suspension & Shock Service': 110000,
                       };
-                      for (const sTitle of selectedServiceCatalog) {
-                        const cost = SERVICE_CATALOG_COSTS[sTitle] || 50000;
-                        await fetch('/api/services', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({
-                            vehicleId: activeVehicle.id,
-                            customerId: userId,
-                            serviceType: sTitle,
-                            cost: cost,
-                            bookingDate: new Date().toISOString(),
-                            diagnosticNotes: `Selected by customer via Workshop Service Selection: ${sTitle}`,
-                          }),
-                        });
-                      }
-                      onRefreshAll();
-                      const count = selectedServiceCatalog.length;
-                      setSelectedServiceCatalog([]);
-                      setServiceNotificationBanner({
-                        type: 'success',
-                        message: `🎉 Successfully booked ${count} service(s) at workshop for vehicle ${activeVehicle.registrationNumber}!`,
-                      });
-                    } catch (e) {
-                      console.error(e);
+                      const c = SERVICE_CATALOG_COSTS[sTitle] || 50000;
+                      return (
+                        <div key={sTitle} className="flex items-center justify-between text-xs py-1 border-b border-slate-700/50">
+                          <span className="text-slate-200">🔧 {sTitle}</span>
+                          <span className="font-mono text-slate-300">UGX {c.toLocaleString()}</span>
+                        </div>
+                      );
+                    })}
+                    <div className="flex items-center justify-between text-xs py-1 text-emerald-300 font-bold">
+                      <span>🚗 Home Service Transport Fee (Technician Doorstep Visit)</span>
+                      <span className="font-mono">UGX 20,000</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-3xs font-mono font-bold uppercase text-slate-300 mb-1">
+                      Vehicle to be Serviced
+                    </label>
+                    <select
+                      value={homeServiceVehicleId || activeVehicle?.id || ''}
+                      onChange={(e) => setHomeServiceVehicleId(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-800 border border-slate-700 text-xs rounded-xl text-white font-medium focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                    >
+                      {myVehicles.map((v) => (
+                        <option key={v.id} value={v.id}>
+                          🚗 {v.make} {v.model} ({v.registrationNumber})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-3xs font-mono font-bold uppercase text-slate-300 mb-1">
+                      Contact Phone Number
+                    </label>
+                    <input
+                      type="text"
+                      value={homeServicePhone}
+                      onChange={(e) => setHomeServicePhone(e.target.value)}
+                      placeholder="+256 700 000000"
+                      required
+                      className="w-full px-3 py-2 bg-slate-800 border border-slate-700 text-xs rounded-xl text-white font-mono focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                    />
+                  </div>
+
+                  <div className="sm:col-span-2">
+                    <label className="block text-3xs font-mono font-bold uppercase text-slate-300 mb-1">
+                      Home / Office Delivery Address
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={homeServiceAddress}
+                        onChange={(e) => setHomeServiceAddress(e.target.value)}
+                        placeholder="e.g. Plot 42 Naguru Drive, Ntinda-Naguru"
+                        required
+                        className="flex-1 px-3 py-2 bg-slate-800 border border-slate-700 text-xs rounded-xl text-white focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (navigator.geolocation) {
+                            navigator.geolocation.getCurrentPosition(
+                              (pos) => {
+                                setHomeServiceGpsLocation(`${pos.coords.latitude.toFixed(4)}° N, ${pos.coords.longitude.toFixed(4)}° E (GPS Verified Pin)`);
+                                alert(`📍 Location pinned: ${pos.coords.latitude.toFixed(4)}° N, ${pos.coords.longitude.toFixed(4)}° E`);
+                              },
+                              () => alert('📍 GPS Location pinned: 0.3476° N, 32.5825° E (Kampala Central Pin)')
+                            );
+                          } else {
+                            alert('📍 GPS Location pinned: 0.3476° N, 32.5825° E (Kampala Central Pin)');
+                          }
+                        }}
+                        className="px-3 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-xl shrink-0 cursor-pointer flex items-center gap-1.5"
+                      >
+                        <MapPin className="w-3.5 h-3.5" />
+                        <span>Use GPS Pin</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-3xs font-mono font-bold uppercase text-slate-300 mb-1">
+                      Landmark / Nearby Feature
+                    </label>
+                    <input
+                      type="text"
+                      value={homeServiceLandmark}
+                      onChange={(e) => setHomeServiceLandmark(e.target.value)}
+                      placeholder="e.g. Opposite Shell Station, Black Gate"
+                      className="w-full px-3 py-2 bg-slate-800 border border-slate-700 text-xs rounded-xl text-white focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-3xs font-mono font-bold uppercase text-slate-300 mb-1">
+                      City / Area
+                    </label>
+                    <input
+                      type="text"
+                      value={homeServiceCity}
+                      onChange={(e) => setHomeServiceCity(e.target.value)}
+                      placeholder="e.g. Kampala, Entebbe, Jinja"
+                      className="w-full px-3 py-2 bg-slate-800 border border-slate-700 text-xs rounded-xl text-white focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-3xs font-mono font-bold uppercase text-slate-300 mb-1">
+                      Preferred Date
+                    </label>
+                    <input
+                      type="date"
+                      value={homeServiceDate}
+                      onChange={(e) => setHomeServiceDate(e.target.value)}
+                      required
+                      className="w-full px-3 py-2 bg-slate-800 border border-slate-700 text-xs rounded-xl text-white focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-3xs font-mono font-bold uppercase text-slate-300 mb-1">
+                      Preferred Time Slot
+                    </label>
+                    <select
+                      value={homeServiceTimeSlot}
+                      onChange={(e) => setHomeServiceTimeSlot(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-800 border border-slate-700 text-xs rounded-xl text-white font-medium focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                    >
+                      <option value="8:00 AM - 10:00 AM">8:00 AM - 10:00 AM (Morning)</option>
+                      <option value="10:00 AM - 12:00 PM">10:00 AM - 12:00 PM (Late Morning)</option>
+                      <option value="2:00 PM - 4:00 PM">2:00 PM - 4:00 PM (Afternoon)</option>
+                      <option value="4:00 PM - 6:00 PM">4:00 PM - 6:00 PM (Evening)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="pt-3 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setHomeServiceStage('selection');
+                      window.scrollTo({ top: 0, behavior: 'instant' });
+                    }}
+                    className="w-full sm:w-auto px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold rounded-xl border border-slate-700 cursor-pointer transition"
+                  >
+                    ← Back to Service Selection
+                  </button>
+
+                  <button
+                    type="submit"
+                    disabled={isSubmittingHomeService}
+                    className="w-full sm:w-auto px-6 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-black rounded-xl shadow-lg cursor-pointer transition flex items-center justify-center gap-2"
+                  >
+                    {isSubmittingHomeService ? (
+                      <span>Submitting Request...</span>
+                    ) : (
+                      <span>Confirm & Submit Home Service Request →</span>
+                    )}
+                  </button>
+                </div>
+              </form>
+            </div>
+          ) : (
+            /* Flexible Multi-Service Selection Matrix */
+            <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm space-y-4">
+              {/* Home Service Mode Alert Banner */}
+              {isHomeServiceMode && (
+                <div className="p-3 bg-slate-900 border border-blue-500/50 text-white rounded-xl shadow-xs flex items-center justify-between gap-3 animate-fadeIn">
+                  <div className="flex items-center gap-2.5">
+                    <span className="text-lg">🏠</span>
+                    <div>
+                      <h3 className="text-xs font-extrabold text-white flex items-center gap-2">
+                        <span>HOME SERVICE MODE</span>
+                        <span className="px-2 py-0.5 rounded bg-blue-500/30 text-blue-300 font-mono text-3xs uppercase font-bold border border-blue-400/30">UGX 20,000 Transport Fee</span>
+                      </h3>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setIsHomeServiceMode(false)}
+                    className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 text-3xs font-bold rounded-lg border border-slate-700 transition cursor-pointer shrink-0"
+                  >
+                    Switch to Workshop
+                  </button>
+                </div>
+              )}
+
+              <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+                <h2 className="text-xs font-mono font-bold uppercase tracking-wider text-slate-900 flex items-center gap-1.5">
+                  <Wrench className="w-4 h-4 text-emerald-600" />
+                  Vehicle Service Selection
+                </h2>
+                <span className="px-2.5 py-0.5 rounded-full text-3xs font-bold font-mono bg-emerald-100 text-emerald-800 uppercase">
+                  {selectedServiceCatalog.length} Selected
+                </span>
+              </div>
+
+              {/* Service Checkbox Matrix Grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5">
+                {[
+                  { id: 'oil', title: 'Full Oil & Filter Change', cost: 80000, desc: 'Synthetic motor oil replacement, oil filter & engine inspection', icon: '🛢️' },
+                  { id: 'wash', title: 'Eco Foam Car Wash & Vacuum', cost: 25000, desc: 'Snow foam wash, interior vacuum, tire shine & window polish', icon: '🫧' },
+                  { id: 'brakes', title: 'Brake Pad & Rotor Inspection', cost: 120000, desc: 'Brake fluid check, pad replacement & rotor resurfacing', icon: '🛑' },
+                  { id: 'engine', title: 'Engine Diagnostics & Scan', cost: 50000, desc: 'OBD-II computer fault scan, sensor test & error code clear', icon: '💻' },
+                  { id: 'wheels', title: 'Wheel Alignment & Balancing', cost: 45000, desc: '4-wheel laser alignment, tire balancing & pressure check', icon: '🛞' },
+                  { id: 'ac', title: 'AC Servicing & Gas Refill', cost: 90000, desc: 'Cabin filter clean, refrigerant gas refill & compressor check', icon: '❄️' },
+                  { id: 'battery', title: 'Battery Health Test & Service', cost: 35000, desc: 'Voltage testing, terminal cleaning & alternator check', icon: '🔋' },
+                  { id: 'suspension', title: 'Suspension & Shock Service', cost: 110000, desc: 'Bushings check, strut inspection & noise diagnostics', icon: '🔩' },
+                ].map((srvItem) => {
+                  const isChecked = selectedServiceCatalog.includes(srvItem.title);
+                  return (
+                    <div
+                      key={srvItem.id}
+                      onClick={() => {
+                        if (isChecked) {
+                          setSelectedServiceCatalog((prev) => prev.filter((t) => t !== srvItem.title));
+                          setServiceNotificationBanner({
+                            type: 'info',
+                            message: `Unselected service "${srvItem.title}".`,
+                          });
+                        } else {
+                          setSelectedServiceCatalog((prev) => [...prev, srvItem.title]);
+                          setServiceNotificationBanner({
+                            type: 'success',
+                            message: `Selected service "${srvItem.title}"! (UGX ${srvItem.cost.toLocaleString()})`,
+                          });
+                        }
+                      }}
+                      className={`p-3 rounded-xl border transition cursor-pointer flex flex-col justify-between space-y-2 ${
+                        isChecked
+                          ? 'bg-emerald-50/80 border-emerald-500 shadow-sm ring-1 ring-emerald-400'
+                          : 'bg-slate-50 border-slate-200 hover:bg-slate-100 hover:border-slate-300'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xl">{srvItem.icon}</span>
+                          <div>
+                            <h3 className="text-xs font-extrabold text-slate-900">{srvItem.title}</h3>
+                            <span className="text-3xs font-mono font-bold text-emerald-700 block mt-0.5">
+                              UGX {srvItem.cost.toLocaleString()}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className={`w-5 h-5 rounded-md flex items-center justify-center shrink-0 text-white font-bold text-xs transition ${
+                          isChecked ? 'bg-emerald-600' : 'border border-slate-300 bg-white'
+                        }`}>
+                          {isChecked && '✓'}
+                        </div>
+                      </div>
+
+                      <p className="text-3xs text-slate-600 leading-relaxed">{srvItem.desc}</p>
+
+                      <div className="flex items-center justify-between pt-1 border-t border-slate-200/60 text-3xs font-bold">
+                        <span className={isChecked ? 'text-emerald-700' : 'text-slate-400'}>
+                          {isChecked ? 'Selected' : 'Click to Select'}
+                        </span>
+                        <span className="text-slate-500 underline">
+                          {isChecked ? 'Unselect' : 'Select'}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Batch Submission Bar for Selected Services */}
+              <div className="bg-slate-900 text-white p-4 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-md">
+                <div>
+                  <span className="text-3xs uppercase font-mono text-slate-400 block font-bold">Total Estimated Selected Services</span>
+                  <span className="text-xl font-black font-mono text-emerald-400">
+                    UGX {
+                      [
+                        { title: 'Full Oil & Filter Change', cost: 80000 },
+                        { title: 'Eco Foam Car Wash & Vacuum', cost: 25000 },
+                        { title: 'Brake Pad & Rotor Inspection', cost: 120000 },
+                        { title: 'Engine Diagnostics & Scan', cost: 50000 },
+                        { title: 'Wheel Alignment & Balancing', cost: 45000 },
+                        { title: 'AC Servicing & Gas Refill', cost: 90000 },
+                        { title: 'Battery Health Test & Service', cost: 35000 },
+                        { title: 'Suspension & Shock Service', cost: 110000 },
+                      ]
+                        .filter((s) => selectedServiceCatalog.includes(s.title))
+                        .reduce((acc, s) => acc + s.cost, 0)
+                        .toLocaleString()
                     }
-                  }}
-                  className={`py-2.5 px-4 font-black text-xs rounded-xl shadow transition cursor-pointer flex items-center justify-center gap-1.5 ${
-                    selectedServiceCatalog.length > 0 && !isHomeServiceMode
-                      ? 'bg-emerald-500 hover:bg-emerald-400 text-slate-950'
-                      : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-                  }`}
-                >
-                  <CheckCircle2 className="w-4 h-4 text-slate-950" />
-                  <span>Confirm Workshop Booking ({selectedServiceCatalog.length})</span>
-                </button>
+                  </span>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    onClick={() => {
+                      if (selectedServiceCatalog.length === 0) {
+                        setServiceNotificationBanner({
+                          type: 'warning',
+                          message: '⚠️ Please select at least one vehicle service before proceeding to location details.',
+                        });
+                        return;
+                      }
+                      setHomeServiceStage('location');
+                      window.scrollTo({ top: 0, behavior: 'instant' });
+                    }}
+                    className={`py-2.5 px-4 font-black text-xs rounded-xl shadow transition cursor-pointer flex items-center justify-center gap-1.5 ${
+                      isHomeServiceMode || selectedServiceCatalog.length > 0
+                        ? 'bg-blue-500 hover:bg-blue-400 text-slate-950 font-black'
+                        : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                    }`}
+                  >
+                    <MapPin className="w-4 h-4 text-slate-950" />
+                    <span>Proceed to Home Location Details ({selectedServiceCatalog.length}) →</span>
+                  </button>
+
+                  <button
+                    disabled={selectedServiceCatalog.length === 0}
+                    onClick={async () => {
+                      if (!activeVehicle) return;
+                      try {
+                        const SERVICE_CATALOG_COSTS: Record<string, number> = {
+                          'Full Oil & Filter Change': 80000,
+                          'Eco Foam Car Wash & Vacuum': 25000,
+                          'Brake Pad & Rotor Inspection': 120000,
+                          'Engine Diagnostics & Scan': 50000,
+                          'Wheel Alignment & Balancing': 45000,
+                          'AC Servicing & Gas Refill': 90000,
+                          'Battery Health Test & Service': 35000,
+                          'Suspension & Shock Service': 110000,
+                        };
+                        for (const sTitle of selectedServiceCatalog) {
+                          const cost = SERVICE_CATALOG_COSTS[sTitle] || 50000;
+                          await fetch('/api/services', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                              vehicleId: activeVehicle.id,
+                              customerId: userId,
+                              serviceType: sTitle,
+                              cost: cost,
+                              bookingDate: new Date().toISOString(),
+                              diagnosticNotes: `Selected by customer via Workshop Service Selection: ${sTitle}`,
+                            }),
+                          });
+                        }
+                        const bookedCount = selectedServiceCatalog.length;
+                        setSelectedServiceCatalog([]);
+                        onRefreshAll();
+                        setServiceNotificationBanner({
+                          type: 'success',
+                          message: `🎉 Successfully booked ${bookedCount} workshop service(s)! Service Manager & Technicians notified.`,
+                        });
+                      } catch (e) {
+                        console.error('Failed to book workshop services', e);
+                      }
+                    }}
+                    className="py-2.5 px-4 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-slate-950 font-black text-xs rounded-xl shadow transition cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    <Wrench className="w-4 h-4 text-slate-950" />
+                    <span>Confirm Workshop Booking ({selectedServiceCatalog.length})</span>
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
+          )}
         </div>
       )}
 
@@ -3696,6 +3948,13 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
               </div>
             )}
 
+            {isPaymentSettled && (
+              <div className="p-3 bg-emerald-100 border border-emerald-300 text-emerald-900 text-xs font-bold rounded-xl text-center space-y-1">
+                <span className="text-sm block">✅ Invoice Paid & Settled</span>
+                <span className="block font-mono">This invoice has already been paid. No further payment is required.</span>
+              </div>
+            )}
+
             {paySuccessMsg && (
               <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold rounded-xl text-center">
                 {paySuccessMsg}
@@ -3703,12 +3962,18 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
             )}
 
             <button
-              disabled={isProcessingPay}
+              disabled={isProcessingPay || isPaymentSettled}
               onClick={handleProcessPayment}
-              className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl cursor-pointer transition flex items-center justify-center gap-1.5"
+              className={`w-full py-3 text-xs font-bold rounded-xl transition flex items-center justify-center gap-1.5 ${
+                isPaymentSettled
+                  ? 'bg-slate-200 text-slate-500 cursor-not-allowed border border-slate-300'
+                  : 'bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer'
+              }`}
             >
               {isProcessingPay ? (
                 <span>Processing Transaction...</span>
+              ) : isPaymentSettled ? (
+                <span>✓ Invoice Settled (No Further Payment Required)</span>
               ) : (
                 <span>Pay All Services Rendered (UGX {totalCalculatedCostUGX.toLocaleString()}) at Once</span>
               )}
@@ -4482,278 +4747,6 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
                       <>
                         <Droplets className="w-4 h-4 text-slate-950" />
                         <span>Confirm Wash Request</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
-
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ================= MODAL: HOME CAR SERVICING REQUEST ================= */}
-      {showHomeServiceModal && (
-        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-fadeIn">
-          <div className="bg-slate-900 text-white rounded-2xl w-full max-w-xl shadow-2xl border border-blue-500/40 overflow-hidden flex flex-col max-h-[90vh]">
-            
-            {/* Header */}
-            <div className="bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 p-4 border-b border-blue-500/30 flex items-center justify-between shrink-0">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-blue-600/30 border border-blue-400 flex items-center justify-center text-xl shadow-xs">
-                  🏠
-                </div>
-                <div>
-                  <h3 className="text-sm font-extrabold text-white flex items-center gap-1.5">
-                    Request Home Car Servicing
-                  </h3>
-                  <p className="text-3xs text-blue-200">Mobile certified technician dispatched to your doorstep</p>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setShowHomeServiceModal(false)}
-                className="w-8 h-8 rounded-full bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center font-bold text-sm cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
-
-            {/* Scrollable Form Body */}
-            <form onSubmit={handleCreateHomeServiceRequest} className="p-4 sm:p-5 space-y-4 overflow-y-auto">
-              
-              {homeServiceSuccessMsg && (
-                <div className="p-3 bg-emerald-950/90 border border-emerald-500 text-emerald-300 text-xs font-bold rounded-xl flex items-center gap-2 animate-fadeIn">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                  <span>{homeServiceSuccessMsg}</span>
-                </div>
-              )}
-
-              {/* Vehicle Selection */}
-              <div>
-                <label className="block text-3xs font-mono font-bold uppercase text-slate-300 mb-1">
-                  Select Vehicle to be Serviced at Home
-                </label>
-                <select
-                  value={homeServiceVehicleId || activeVehicle?.id || ''}
-                  onChange={(e) => setHomeServiceVehicleId(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-800 border border-slate-700 text-xs rounded-xl text-white font-medium focus:ring-1 focus:ring-blue-500 focus:outline-none"
-                >
-                  {myVehicles.map((v) => (
-                    <option key={v.id} value={v.id}>
-                      🚗 {v.make} {v.model} ({v.registrationNumber}) • {v.color || 'Silver'}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Selected Services Summary (Mandatory selected from Service Selection Matrix) */}
-              <div>
-                <label className="block text-3xs font-mono font-bold uppercase text-slate-300 mb-1 flex items-center justify-between">
-                  <span>Selected Vehicle Services for Home Delivery</span>
-                  <span className="text-emerald-400 font-extrabold">{selectedServiceCatalog.length} Selected</span>
-                </label>
-                {selectedServiceCatalog.length === 0 ? (
-                  <div className="p-3 bg-amber-950/80 border border-amber-500/50 text-amber-300 rounded-xl text-xs font-bold space-y-2">
-                    <p>⚠️ No services selected. Home Service is a delivery mode for chosen vehicle services.</p>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowHomeServiceModal(false);
-                        setIsHomeServiceMode(true);
-                        setActiveTab('services');
-                      }}
-                      className="px-3 py-1 bg-amber-500 text-slate-950 rounded-lg text-xs font-extrabold cursor-pointer"
-                    >
-                      ← Select Services First
-                    </button>
-                  </div>
-                ) : (
-                  <div className="bg-slate-800/80 border border-slate-700/80 rounded-xl p-3 space-y-2">
-                    <div className="flex flex-wrap gap-1.5">
-                      {selectedServiceCatalog.map((sName) => {
-                        const SERVICE_CATALOG_COSTS: Record<string, number> = {
-                          'Full Oil & Filter Change': 80000,
-                          'Eco Foam Car Wash & Vacuum': 25000,
-                          'Brake Pad & Rotor Inspection': 120000,
-                          'Engine Diagnostics & Scan': 50000,
-                          'Wheel Alignment & Balancing': 45000,
-                          'AC Servicing & Gas Refill': 90000,
-                          'Battery Health Test & Service': 35000,
-                          'Suspension & Shock Service': 110000,
-                        };
-                        const cost = SERVICE_CATALOG_COSTS[sName] || 50000;
-                        return (
-                          <div key={sName} className="px-2.5 py-1 bg-slate-900 border border-blue-500/40 rounded-lg text-xs flex items-center gap-2">
-                            <span className="font-semibold text-white">{sName}</span>
-                            <span className="font-mono text-emerald-400 font-bold text-3xs">UGX {cost.toLocaleString()}</span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                    <p className="text-3xs text-slate-400 font-mono">
-                      Delivery fee: <span className="text-emerald-400 font-bold">UGX 0 (Free Doorstep Service)</span>
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              {/* Location Details */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-3xs font-mono font-bold uppercase text-slate-300 mb-1">
-                    Home / Workplace Address
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={homeServiceAddress}
-                    onChange={(e) => setHomeServiceAddress(e.target.value)}
-                    placeholder="e.g. Plot 42 Naguru Drive, Ntinda-Naguru"
-                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 text-xs rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-blue-400 font-medium"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-3xs font-mono font-bold uppercase text-slate-300 mb-1">
-                    City / Division
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={homeServiceCity}
-                    onChange={(e) => setHomeServiceCity(e.target.value)}
-                    placeholder="e.g. Kampala / Entebbe / Jinja"
-                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 text-xs rounded-xl text-white font-medium"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-3xs font-mono font-bold uppercase text-slate-300 mb-1">
-                    Landmark / Gate Color
-                  </label>
-                  <input
-                    type="text"
-                    value={homeServiceLandmark}
-                    onChange={(e) => setHomeServiceLandmark(e.target.value)}
-                    placeholder="e.g. Opposite Shell Station, Black Gate"
-                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 text-xs rounded-xl text-white placeholder-slate-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-3xs font-mono font-bold uppercase text-slate-300 mb-1">
-                    Phone Contact Number
-                  </label>
-                  <input
-                    type="tel"
-                    required
-                    value={homeServicePhone}
-                    onChange={(e) => setHomeServicePhone(e.target.value)}
-                    placeholder="+256 772 123456"
-                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 text-xs rounded-xl text-white font-mono"
-                  />
-                </div>
-              </div>
-
-              {/* Schedule Date & Time Slot */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-3xs font-mono font-bold uppercase text-slate-300 mb-1">
-                    Preferred Date
-                  </label>
-                  <input
-                    type="date"
-                    required
-                    value={homeServiceDate}
-                    onChange={(e) => setHomeServiceDate(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 text-xs rounded-xl text-white font-mono"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-3xs font-mono font-bold uppercase text-slate-300 mb-1">
-                    Preferred Time Slot
-                  </label>
-                  <select
-                    value={homeServiceTimeSlot}
-                    onChange={(e) => setHomeServiceTimeSlot(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 text-xs rounded-xl text-white font-medium"
-                  >
-                    <option value="9:00 AM - 11:00 AM">Morning (9:00 AM - 11:00 AM)</option>
-                    <option value="11:30 AM - 1:30 PM">Midday (11:30 AM - 1:30 PM)</option>
-                    <option value="2:00 PM - 4:00 PM">Afternoon (2:00 PM - 4:00 PM)</option>
-                    <option value="4:30 PM - 6:30 PM">Evening (4:30 PM - 6:30 PM)</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Special Instructions */}
-              <div>
-                <label className="block text-3xs font-mono font-bold uppercase text-slate-300 mb-1">
-                  Access / Parking Instructions
-                </label>
-                <input
-                  type="text"
-                  value={homeServiceInstructions}
-                  onChange={(e) => setHomeServiceInstructions(e.target.value)}
-                  placeholder="e.g. Park inside compound, beware of dog, ask for James at reception..."
-                  className="w-full px-3 py-2 bg-slate-800 border border-slate-700 text-xs rounded-xl text-white placeholder-slate-500"
-                />
-              </div>
-
-              {/* Action Buttons */}
-              <div className="bg-slate-800/80 p-3.5 rounded-xl border border-slate-700 flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
-                <div>
-                  <span className="text-3xs font-mono text-slate-400 block uppercase">Booking Type: HOME SERVICE (UGX 0 Delivery Fee)</span>
-                  <span className="text-base font-black text-emerald-400 font-mono">
-                    UGX {
-                      (() => {
-                        const SERVICE_CATALOG_COSTS: Record<string, number> = {
-                          'Full Oil & Filter Change': 80000,
-                          'Eco Foam Car Wash & Vacuum': 25000,
-                          'Brake Pad & Rotor Inspection': 120000,
-                          'Engine Diagnostics & Scan': 50000,
-                          'Wheel Alignment & Balancing': 45000,
-                          'AC Servicing & Gas Refill': 90000,
-                          'Battery Health Test & Service': 35000,
-                          'Suspension & Shock Service': 110000,
-                        };
-                        return selectedServiceCatalog
-                          .reduce((acc, s) => acc + (SERVICE_CATALOG_COSTS[s] || 50000), 0)
-                          .toLocaleString();
-                      })()
-                    }
-                  </span>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowHomeServiceModal(false)}
-                    className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl transition cursor-pointer"
-                  >
-                    Cancel
-                  </button>
-
-                  <button
-                    type="submit"
-                    disabled={isSubmittingHomeService || selectedServiceCatalog.length === 0}
-                    className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-xs rounded-xl shadow-lg transition cursor-pointer flex items-center justify-center gap-2 disabled:bg-slate-700 disabled:text-slate-400 disabled:cursor-not-allowed"
-                  >
-                    {isSubmittingHomeService ? (
-                      <span className="flex items-center gap-2">
-                        <span className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-                        Dispatching Request...
-                      </span>
-                    ) : (
-                      <>
-                        <Wrench className="w-4 h-4 text-white" />
-                        <span>Dispatch Home Technician</span>
                       </>
                     )}
                   </button>

@@ -302,6 +302,14 @@ export const StaffPortal: React.FC<StaffPortalProps> = ({
   const [handoffSuccessMsg, setHandoffSuccessMsg] = useState('');
 
   const handleOpenHandoffModal = (serviceId: string) => {
+    const activeJob = services.find((s) => s.id === serviceId);
+    if (activeJob && activeJob.selectedServicesList && activeJob.selectedServicesList.length > 0) {
+      const incomplete = activeJob.selectedServicesList.filter((s) => s.progress !== 'Completed');
+      if (incomplete.length > 0) {
+        alert(`⚠️ Cannot complete vehicle job yet!\n\n${incomplete.length} requested service(s) are still pending or in progress:\n` + incomplete.map(i => `• ${i.title} (${i.progress || 'Pending'})`).join('\n') + '\n\nPlease update all services to Completed before handing off the vehicle.');
+        return;
+      }
+    }
     setHandoffServiceId(serviceId);
     setShowHandoffModal(true);
     setHandoffSuccessMsg('');
@@ -1194,71 +1202,214 @@ Format as a polite, clean, structured layout. Avoid deep developer jargon.`;
                       )}
                     </div>
 
-                    <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1">
-                      {myAssignedTasks.map((srv) => {
-                        const veh = vehicles.find((v) => v.id === srv.vehicleId);
-                        const isSelected = techSelectedSrv === srv.id;
-                        const isAssignedToMe = srv.technicianId === currentTechId || srv.technicianId === 'usr-3';
+                    <div className="space-y-2.5 max-h-[550px] overflow-y-auto pr-1">
+                      {(() => {
+                        // Group tasks by vehicleId so that each vehicle generates exactly ONE job card
+                        const groupedVehicleMap = new Map<string, typeof myAssignedTasks>();
+                        myAssignedTasks.forEach((task) => {
+                          const vKey = task.vehicleId || task.id;
+                          if (!groupedVehicleMap.has(vKey)) {
+                            groupedVehicleMap.set(vKey, []);
+                          }
+                          groupedVehicleMap.get(vKey)!.push(task);
+                        });
 
-                        return (
+                        const consolidatedVehicleCards = Array.from(groupedVehicleMap.entries()).map(([vehId, srvGroup]) => {
+                          const primarySrv = srvGroup.find((s) => s.assignmentStatus === 'Accepted') || srvGroup[0];
+                          const veh = vehicles.find((v) => v.id === primarySrv.vehicleId);
+                          const cust = users.find((u) => u.id === primarySrv.customerId);
+
+                          // Dynamic Location Resolution from Customer Booking
+                          const vehRes = reservations.find((r) => r.vehicleId === primarySrv.vehicleId);
+                          const vehParking = vehRes ? parkingSpaces.find((p) => p.id === vehRes.parkingId) : null;
+
+                          const parkingYardLoc = primarySrv.assignedDeliveryBay
+                            ? primarySrv.assignedDeliveryBay
+                            : vehParking
+                            ? `${vehParking.location} (${vehParking.floor ? `Floor ${vehParking.floor}, ` : ''}Slot ${vehParking.spaceNumber})`
+                            : 'Kampala Central Yard (Slot A12)';
+
+                          const homeLoc = primarySrv.homeAddress
+                            ? `${primarySrv.homeAddress}${primarySrv.homeLandmark ? `, ${primarySrv.homeLandmark}` : ''}`
+                            : 'Plot 42 Naguru Drive, Kampala';
+
+                          // Aggregate requested services list across all tasks for this vehicle
+                          let reqServicesList: { id?: string; title: string; cost: number; progress?: 'Not Started' | 'In Progress' | 'Completed' }[] = [];
+                          srvGroup.forEach((s) => {
+                            if (s.selectedServicesList && s.selectedServicesList.length > 0) {
+                              s.selectedServicesList.forEach((st) => {
+                                if (!reqServicesList.some((existing) => existing.title === st.title)) {
+                                  reqServicesList.push(st);
+                                }
+                              });
+                            } else {
+                              const title = s.serviceType.replace(/^🏠 Home Service:\s*/, '');
+                              if (!reqServicesList.some((existing) => existing.title === title)) {
+                                reqServicesList.push({
+                                  id: s.id,
+                                  title,
+                                  cost: s.cost || 0,
+                                  progress: s.status === ServiceStatus.COMPLETED ? 'Completed' : 'In Progress',
+                                });
+                              }
+                            }
+                          });
+
+                          const estTotalServicesCost = reqServicesList.reduce((acc, curr) => acc + (curr.cost || 0), 0);
+                          const isSelected = techSelectedSrv === primarySrv.id;
+                          const isAccepted = srvGroup.some((s) => s.assignmentStatus === 'Accepted');
+                          const isAssignedToMe = srvGroup.some((s) => s.technicianId === currentTechId || s.technicianId === 'usr-3');
+
+                          // Status badge
+                          const allCompleted = srvGroup.every((s) => s.status === ServiceStatus.COMPLETED || s.status === ServiceStatus.READY_FOR_PICKUP);
+                          let statusBadge = {
+                            label: '🟡 Awaiting Acceptance',
+                            bg: 'bg-amber-100 text-amber-900 border-amber-300',
+                          };
+                          if (allCompleted) {
+                            statusBadge = { label: '🟢 Completed', bg: 'bg-emerald-100 text-emerald-900 border-emerald-300' };
+                          } else if (isAccepted) {
+                            statusBadge = { label: '🟠 In Progress', bg: 'bg-orange-100 text-orange-900 border-orange-300' };
+                          }
+
+                          return {
+                            primarySrv,
+                            srvGroup,
+                            veh,
+                            cust,
+                            parkingYardLoc,
+                            homeLoc,
+                            reqServicesList,
+                            estTotalServicesCost,
+                            isSelected,
+                            isAccepted,
+                            isAssignedToMe,
+                            statusBadge,
+                          };
+                        });
+
+                        return consolidatedVehicleCards.map(({
+                          primarySrv,
+                          srvGroup,
+                          veh,
+                          cust,
+                          parkingYardLoc,
+                          homeLoc,
+                          reqServicesList,
+                          estTotalServicesCost,
+                          isSelected,
+                          isAccepted,
+                          isAssignedToMe,
+                          statusBadge,
+                        }) => (
                           <div
-                            key={srv.id}
-                            onClick={() => setTechSelectedSrv(srv.id)}
-                            className={`p-3 border rounded-xl cursor-pointer transition ${
+                            key={primarySrv.id}
+                            onClick={() => setTechSelectedSrv(primarySrv.id)}
+                            className={`p-3.5 border rounded-xl cursor-pointer transition space-y-2.5 ${
                               isSelected
-                                ? 'bg-orange-50 border-orange-400 shadow-sm'
-                                : 'bg-white border-gray-100 hover:bg-gray-50'
+                                ? 'bg-orange-50/90 border-orange-400 shadow-md ring-1 ring-orange-300'
+                                : 'bg-white border-slate-200 hover:bg-slate-50 shadow-2xs'
                             }`}
                           >
-                            <div className="flex items-center justify-between">
-                              <span className="font-bold text-xs text-gray-950">
-                                {veh ? `${veh.make} ${veh.model}` : 'Vehicle'}
-                              </span>
-                              <span className={`text-3xs font-mono font-bold px-1.5 py-0.5 rounded ${
-                                isAssignedToMe ? 'bg-sky-100 text-sky-800' : 'bg-amber-100 text-amber-800'
-                              }`}>
-                                {isAssignedToMe ? 'Assigned' : 'Unassigned'}
+                            {/* Clean Card Header: Car Number Plate & Status Badge */}
+                            <div className="flex items-start justify-between gap-1 border-b border-slate-100 pb-2">
+                              <div>
+                                <h4 className="font-black text-sm text-slate-900 tracking-tight flex items-center gap-1.5">
+                                  <span className="text-amber-500">🚗</span>
+                                  <span className="text-sky-900 font-mono font-black text-sm bg-sky-50 px-2 py-0.5 rounded border border-sky-200">
+                                    {veh?.registrationNumber || 'UBD 123A'}
+                                  </span>
+                                  <span className="text-slate-600 font-bold text-xs">
+                                    • {veh ? `${veh.make} ${veh.model}` : 'Vehicle'}
+                                  </span>
+                                </h4>
+                              </div>
+                              <span className={`text-[9px] font-mono font-bold px-2 py-0.5 rounded-full border shrink-0 ${statusBadge.bg}`}>
+                                {statusBadge.label}
                               </span>
                             </div>
 
-                            <div className="text-2xs font-bold text-orange-700 mt-1">{srv.serviceType}</div>
-
-                            <div className="text-3xs text-gray-500 font-mono mt-1 flex justify-between items-center">
-                              <span>REG: {veh?.registrationNumber || 'N/A'}</span>
-                              <span className="font-bold text-gray-700 uppercase">{srv.status}</span>
-                            </div>
-
-                            {/* Duty Acceptance & Rejection Actions */}
-                            {isAssignedToMe && srv.assignmentStatus !== 'Accepted' && (
-                              <div className="mt-2.5 pt-2 border-t border-gray-100 space-y-2">
-                                <span className="text-[10px] font-mono font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded block text-center">
-                                  🔔 New Assigned Duty Awaiting Response
-                                </span>
-                                <div className="grid grid-cols-2 gap-1.5">
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleAcceptDutyAssignment(srv.id);
-                                    }}
-                                    className="py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-3xs rounded-lg transition flex items-center justify-center gap-1 cursor-pointer shadow-xs"
-                                  >
-                                    <span>⚡ Accept Duty</span>
-                                  </button>
-
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setRejectingSrvId(rejectingSrvId === srv.id ? null : srv.id);
-                                    }}
-                                    className="py-1.5 bg-rose-600 hover:bg-rose-500 text-white font-bold text-3xs rounded-lg transition flex items-center justify-center gap-1 cursor-pointer shadow-xs"
-                                  >
-                                    <span>❌ Reject Duty</span>
-                                  </button>
+                            {/* Exact Customer Selected Location */}
+                            <div>
+                              {primarySrv.isHomeService ? (
+                                <div className="inline-flex items-center gap-1.5 bg-emerald-100 text-emerald-900 border border-emerald-300 text-2xs font-extrabold px-2.5 py-1 rounded-lg w-full">
+                                  <span>🟢 HOME SERVICE</span>
+                                  <span className="text-emerald-800 font-medium truncate">
+                                    ({homeLoc})
+                                  </span>
                                 </div>
+                              ) : (
+                                <div className="inline-flex items-center gap-1.5 bg-sky-100 text-sky-900 border border-sky-300 text-2xs font-extrabold px-2.5 py-1 rounded-lg w-full">
+                                  <span>🔵 PARKING YARD</span>
+                                  <span className="text-sky-800 font-medium truncate">
+                                    – {parkingYardLoc}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
 
-                                {rejectingSrvId === srv.id && (
+                            {/* Customer Contact */}
+                            <div className="text-3xs text-slate-600 font-mono flex items-center justify-between bg-slate-50 p-2 rounded-lg border border-slate-100">
+                              <span>📞 Cust: <strong className="text-slate-900">{cust?.name || 'Customer'}</strong></span>
+                              <span className="font-bold text-sky-800">{primarySrv.contactPhone || cust?.phone || '+256 700 000000'}</span>
+                            </div>
+
+                            {/* Complete List of Requested Services (Grouped under single vehicle card) */}
+                            <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200/80 space-y-1.5">
+                              <div className="flex items-center justify-between text-[9px] font-mono font-bold text-slate-700 uppercase">
+                                <span>Requested Services ({reqServicesList.length}):</span>
+                                <span className="text-emerald-700 font-extrabold">UGX {estTotalServicesCost.toLocaleString()}</span>
+                              </div>
+                              <div className="space-y-1">
+                                {reqServicesList.map((st, i) => (
+                                  <div key={i} className="text-3xs font-medium text-slate-800 flex items-center justify-between gap-1">
+                                    <span className="truncate flex items-center gap-1">
+                                      <span className="text-orange-500 font-bold">•</span> {st.title}
+                                    </span>
+                                    <span className={`text-[8px] font-mono font-bold px-1.5 py-0.5 rounded shrink-0 ${
+                                      st.progress === 'Completed'
+                                        ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                                        : isAccepted
+                                        ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                                        : 'bg-slate-200 text-slate-700'
+                                    }`}>
+                                      {st.progress === 'Completed' ? '✓ Done' : isAccepted ? '🔄 In Progress' : '⏳ Pending'}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+
+                            {/* Duty Acceptance & Controls */}
+                            {!isAccepted && (
+                              <div className="mt-2 pt-1 border-t border-slate-100 space-y-1.5">
+                                <button
+                                  type="button"
+                                  onClick={async (e) => {
+                                    e.stopPropagation();
+                                    await Promise.all(
+                                      srvGroup.map((s) => handleAcceptDutyAssignment(s.id))
+                                    );
+                                  }}
+                                  className="w-full py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer shadow-md"
+                                >
+                                  <span>⚡ Accept Duty for Entire Vehicle</span>
+                                </button>
+
+                                {isAssignedToMe && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setRejectingSrvId(rejectingSrvId === primarySrv.id ? null : primarySrv.id);
+                                    }}
+                                    className="w-full py-1 bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-200 font-bold text-[9px] rounded-lg transition text-center cursor-pointer"
+                                  >
+                                    ❌ Decline Duty
+                                  </button>
+                                )}
+
+                                {rejectingSrvId === primarySrv.id && (
                                   <div onClick={(e) => e.stopPropagation()} className="p-2 bg-rose-50 border border-rose-200 rounded-lg space-y-1.5 animate-in fade-in duration-200">
                                     <label className="text-[10px] font-bold text-rose-800 block">Reason for Rejection:</label>
                                     <input
@@ -1270,7 +1421,7 @@ Format as a polite, clean, structured layout. Avoid deep developer jargon.`;
                                     />
                                     <button
                                       type="button"
-                                      onClick={() => handleRejectDutyAssignment(srv.id)}
+                                      onClick={() => handleRejectDutyAssignment(primarySrv.id)}
                                       className="w-full py-1 bg-rose-700 text-white font-bold text-[10px] rounded hover:bg-rose-800"
                                     >
                                       Confirm Rejection & Notify Manager
@@ -1280,75 +1431,53 @@ Format as a polite, clean, structured layout. Avoid deep developer jargon.`;
                               </div>
                             )}
 
-                            {isAssignedToMe && srv.assignmentStatus === 'Accepted' && (
-                              <div className="mt-2 pt-2 border-t border-gray-100 space-y-1.5">
-                                <div className="text-[10px] font-mono font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-1 rounded flex items-center justify-between">
-                                  <span>🔒 Duty Assignment Locked & Accepted</span>
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setCancellingSrvId(cancellingSrvId === srv.id ? null : srv.id);
-                                    }}
-                                    className="px-2 py-0.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-[9px] rounded transition cursor-pointer"
-                                  >
-                                    Cancel Duty
-                                  </button>
-                                </div>
-
-                                {cancellingSrvId === srv.id && (
-                                  <div onClick={(e) => e.stopPropagation()} className="p-2 bg-rose-50 border border-rose-200 rounded-lg space-y-1.5 animate-in fade-in duration-200">
-                                    <label className="text-[10px] font-bold text-rose-800 block">Reason for Cancelling Accepted Duty:</label>
-                                    <input
-                                      type="text"
-                                      value={cancellationReasonInput}
-                                      onChange={(e) => setCancellationReasonInput(e.target.value)}
-                                      placeholder="e.g. Emergency transfer / parts unavailable..."
-                                      className="w-full text-3xs p-1.5 border border-rose-200 rounded bg-white"
-                                    />
-                                    <div className="flex gap-1.5">
-                                      <button
-                                        type="button"
-                                        onClick={() => handleCancelDutyAssignment(srv.id)}
-                                        className="flex-1 py-1 bg-rose-700 text-white font-bold text-[10px] rounded hover:bg-rose-800 cursor-pointer"
-                                      >
-                                        Confirm Cancellation & Return to Manager
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => setCancellingSrvId(null)}
-                                        className="px-2 py-1 bg-gray-200 text-gray-700 text-[10px] font-bold rounded hover:bg-gray-300 cursor-pointer"
-                                      >
-                                        Back
-                                      </button>
-                                    </div>
-                                  </div>
-                                )}
+                            {isAccepted && (
+                              <div className="mt-2 pt-1.5 border-t border-slate-100 flex items-center justify-between text-[10px] font-mono font-bold text-emerald-800 bg-emerald-50 px-2 py-1 rounded">
+                                <span>🔒 Vehicle Job Accepted & Locked</span>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setCancellingSrvId(cancellingSrvId === primarySrv.id ? null : primarySrv.id);
+                                  }}
+                                  className="text-[9px] text-rose-700 underline font-bold hover:text-rose-900"
+                                >
+                                  Cancel
+                                </button>
                               </div>
                             )}
 
-                            {!srv.technicianId && (
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  fetch(`/api/services/${srv.id}/status`, {
-                                    method: 'PUT',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({
-                                      technicianId: currentTechId || 'usr-3',
-                                      status: ServiceStatus.INSPECTION,
-                                    }),
-                                  }).then(() => onRefreshAll());
-                                }}
-                                className="w-full mt-2 py-1 bg-orange-600 hover:bg-orange-500 text-white font-bold text-3xs rounded-lg transition"
-                              >
-                                ⚡ Accept & Claim Task
-                              </button>
+                            {cancellingSrvId === primarySrv.id && (
+                              <div onClick={(e) => e.stopPropagation()} className="p-2 bg-rose-50 border border-rose-200 rounded-lg space-y-1.5 animate-in fade-in duration-200">
+                                <label className="text-[10px] font-bold text-rose-800 block">Reason for Cancelling Duty:</label>
+                                <input
+                                  type="text"
+                                  value={cancellationReasonInput}
+                                  onChange={(e) => setCancellationReasonInput(e.target.value)}
+                                  placeholder="e.g. Emergency transfer / parts unavailable..."
+                                  className="w-full text-3xs p-1.5 border border-rose-200 rounded bg-white"
+                                />
+                                <div className="flex gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCancelDutyAssignment(primarySrv.id)}
+                                    className="flex-1 py-1 bg-rose-700 text-white font-bold text-[10px] rounded hover:bg-rose-800 cursor-pointer"
+                                  >
+                                    Confirm Cancel
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setCancellingSrvId(null)}
+                                    className="px-2 py-1 bg-gray-200 text-gray-700 text-[10px] font-bold rounded hover:bg-gray-300 cursor-pointer"
+                                  >
+                                    Back
+                                  </button>
+                                </div>
+                              </div>
                             )}
                           </div>
-                        );
-                      })}
+                        ));
+                      })()}
                     </div>
                   </div>
 
@@ -1361,6 +1490,8 @@ Format as a polite, clean, structured layout. Avoid deep developer jargon.`;
                         const cust = users.find((u) => u.id === activeJob?.customerId);
                         if (!activeJob) return null;
 
+                        const isAccepted = activeJob.assignmentStatus === 'Accepted';
+
                         // Extract or derive requested services list
                         const requestedServices = activeJob.selectedServicesList && activeJob.selectedServicesList.length > 0
                           ? activeJob.selectedServicesList
@@ -1369,7 +1500,7 @@ Format as a polite, clean, structured layout. Avoid deep developer jargon.`;
                                 id: 'req-1',
                                 title: activeJob.serviceType.replace(/^🏠 Home Service:\s*/, ''),
                                 cost: activeJob.cost,
-                                progress: activeJob.status === ServiceStatus.COMPLETED ? 'Completed' : (activeJob.status === ServiceStatus.BOOKED ? 'Not Started' : 'In Progress'),
+                                progress: activeJob.status === ServiceStatus.COMPLETED ? 'Completed' : 'In Progress',
                               },
                             ];
 
@@ -1378,6 +1509,20 @@ Format as a polite, clean, structured layout. Avoid deep developer jargon.`;
                         const currentLabour = activeJob.labourCost !== undefined ? activeJob.labourCost : 50000;
                         const homeFee = 0; // Home Service is a delivery mode with UGX 0 fee
                         const grandTotalInvoice = servicesTotal + currentLabour + partsTotal + homeFee;
+
+                        // Status Color Badges
+                        let statusBadge = {
+                          label: '🟡 Awaiting Acceptance',
+                          bg: 'bg-amber-100 text-amber-900 border-amber-300',
+                        };
+
+                        if (activeJob.status === ServiceStatus.COMPLETED || activeJob.status === ServiceStatus.READY_FOR_PICKUP) {
+                          statusBadge = { label: '🟢 Completed', bg: 'bg-emerald-100 text-emerald-900 border-emerald-300' };
+                        } else if ((activeJob.status as string) === 'Cancelled') {
+                          statusBadge = { label: '🔴 Cancelled', bg: 'bg-red-100 text-red-900 border-red-300' };
+                        } else if (isAccepted) {
+                          statusBadge = { label: '🟠 In Progress', bg: 'bg-orange-100 text-orange-900 border-orange-300' };
+                        }
 
                         return (
                           <div className="space-y-4">
@@ -1398,344 +1543,289 @@ Format as a polite, clean, structured layout. Avoid deep developer jargon.`;
                                   REG: {veh?.registrationNumber} • Mileage: {veh?.mileage?.toLocaleString() || 0} km
                                 </p>
                               </div>
-                              <span className="text-2xs font-bold bg-orange-100 text-orange-800 px-2.5 py-1 rounded-xl font-mono">
-                                STATUS: {activeJob.status}
+                              <span className={`text-2xs font-mono font-bold px-3 py-1 rounded-xl border ${statusBadge.bg}`}>
+                                {statusBadge.label}
                               </span>
                             </div>
 
-                            {/* Read-Only Customer Service Request Summary */}
-                            <div className="bg-white border border-indigo-100 p-4 rounded-xl space-y-3 shadow-2xs">
-                              <h4 className="text-xs font-mono font-bold text-indigo-900 uppercase tracking-wider flex items-center gap-1.5 border-b border-indigo-50 pb-2">
-                                <ClipboardCheck className="w-4 h-4 text-indigo-600" />
-                                Customer Submitted Service Request (Read-Only Summary)
-                              </h4>
-
-                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-2xs">
-                                <div>
-                                  <span className="text-3xs font-mono font-bold text-slate-400 block uppercase">Customer Name</span>
-                                  <span className="font-extrabold text-slate-900">{cust?.name || 'Valued Customer'}</span>
+                            {/* Awaiting Acceptance Callout if NOT accepted */}
+                            {!isAccepted ? (
+                              <div className="bg-gradient-to-r from-amber-500 to-orange-500 text-white p-6 rounded-2xl space-y-4 shadow-md text-center">
+                                <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center mx-auto text-2xl">
+                                  ⚡
                                 </div>
                                 <div>
-                                  <span className="text-3xs font-mono font-bold text-slate-400 block uppercase">Contact Phone</span>
-                                  <span className="font-bold text-slate-800">{activeJob.contactPhone || cust?.phone || '+256 700 000000'}</span>
+                                  <h3 className="text-base font-extrabold">Vehicle Job Awaiting Acceptance</h3>
+                                  <p className="text-xs text-amber-100 mt-1 max-w-lg mx-auto">
+                                    Tap <strong>Accept Duty</strong> to accept full responsibility for <strong>{veh?.make} {veh?.model} ({veh?.registrationNumber})</strong> and unlock requested services list, customer diagnostic instructions, labour charge entry, and parts allocation.
+                                  </p>
                                 </div>
-                                <div>
-                                  <span className="text-3xs font-mono font-bold text-slate-400 block uppercase">Booking Date & Time</span>
-                                  <span className="font-mono text-slate-800">{new Date(activeJob.bookingDate).toLocaleString()}</span>
-                                </div>
-                                <div>
-                                  <span className="text-3xs font-mono font-bold text-slate-400 block uppercase">Vehicle Details</span>
-                                  <span className="font-bold text-slate-900">{veh?.make} {veh?.model} ({veh?.registrationNumber})</span>
-                                </div>
-                                <div className="sm:col-span-2">
-                                  <span className="text-3xs font-mono font-bold text-slate-400 block uppercase">
-                                    {activeJob.isHomeService ? 'Home Delivery Location' : 'Parking Yard Location'}
-                                  </span>
-                                  <span className="font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 inline-block mt-0.5">
-                                    {activeJob.isHomeService
-                                      ? `📍 Address: ${activeJob.homeAddress || 'Plot 42 Naguru Drive'}`
-                                      : `🅿️ Parking Spot: Floor G, Slot A12`}
-                                  </span>
+
+                                <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleAcceptDutyAssignment(activeJob.id)}
+                                    className="px-6 py-2.5 bg-slate-900 hover:bg-black text-amber-300 font-black text-xs rounded-xl shadow-lg transition cursor-pointer flex items-center gap-2"
+                                  >
+                                    <span>⚡ Accept Duty & Begin Job</span>
+                                  </button>
                                 </div>
                               </div>
+                            ) : (
+                              <>
+                                {/* Read-Only Customer Service Request Summary */}
+                                <div className="bg-white border border-indigo-100 p-4 rounded-xl space-y-3 shadow-2xs">
+                                  <h4 className="text-xs font-mono font-bold text-indigo-900 uppercase tracking-wider flex items-center gap-1.5 border-b border-indigo-50 pb-2">
+                                    <ClipboardCheck className="w-4 h-4 text-indigo-600" />
+                                    Customer Submitted Service Request (Read-Only Summary)
+                                  </h4>
 
-                              {/* Diagnostic / Customer Notes */}
-                              {activeJob.diagnosticNotes && (
-                                <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-3xs text-slate-700 italic">
-                                  <span className="font-bold not-italic text-slate-900 block mb-0.5">Customer Instructions:</span>
-                                  "{activeJob.diagnosticNotes}"
-                                </div>
-                              )}
-                            </div>
-
-                            {/* Requested Services & Progress Controls */}
-                            <div className="bg-white border border-slate-200 p-4 rounded-xl space-y-3">
-                              <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider font-mono flex items-center justify-between">
-                                <span>Customer Requested Services & Progress Updates</span>
-                                <span className="text-3xs text-slate-400 font-normal">
-                                  (Read-only services & prices. Technician updates progress)
-                                </span>
-                              </h4>
-
-                              <div className="space-y-2.5">
-                                {requestedServices.map((srvItem, idx) => {
-                                  const prog = srvItem.progress || 'Not Started';
-                                  return (
-                                    <div
-                                      key={srvItem.id || idx}
-                                      className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-                                    >
-                                      <div>
-                                        <h5 className="text-xs font-extrabold text-slate-900">{srvItem.title}</h5>
-                                        <span className="text-3xs font-mono font-bold text-emerald-700">
-                                          UGX {srvItem.cost.toLocaleString()}
-                                        </span>
-                                      </div>
-
-                                      {/* Progress Control Buttons */}
-                                      <div className="flex items-center gap-1.5 shrink-0">
-                                        {[
-                                          { label: 'Not Started', bg: 'bg-slate-200 text-slate-700 hover:bg-slate-300' },
-                                          { label: 'In Progress', bg: 'bg-amber-500 text-white hover:bg-amber-600' },
-                                          { label: 'Completed', bg: 'bg-emerald-600 text-white hover:bg-emerald-700' },
-                                        ].map((pState) => {
-                                          const isCurrent = prog === pState.label;
-                                          return (
-                                            <button
-                                              key={pState.label}
-                                              type="button"
-                                              onClick={async () => {
-                                                const updatedList = requestedServices.map((item, i) =>
-                                                  i === idx ? { ...item, progress: pState.label as any } : item
-                                                );
-                                                // Sync to backend
-                                                await fetch(`/api/services/${activeJob.id}/status`, {
-                                                  method: 'PUT',
-                                                  headers: { 'Content-Type': 'application/json' },
-                                                  body: JSON.stringify({
-                                                    selectedServicesList: updatedList,
-                                                    status: updatedList.every((it) => it.progress === 'Completed')
-                                                      ? ServiceStatus.COMPLETED
-                                                      : ServiceStatus.INSPECTION,
-                                                  }),
-                                                });
-                                                onRefreshAll();
-                                              }}
-                                              className={`px-2.5 py-1 text-3xs font-bold font-mono rounded-lg transition cursor-pointer ${
-                                                isCurrent
-                                                  ? `${pState.bg} ring-2 ring-offset-1 ring-slate-400 font-black shadow-2xs`
-                                                  : 'bg-white border border-slate-200 text-slate-500 hover:bg-slate-100'
-                                              }`}
-                                            >
-                                              {isCurrent && '✓ '}
-                                              {pState.label}
-                                            </button>
-                                          );
-                                        })}
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            </div>
-
-                            {/* Technician Labour Charge Input */}
-                            <div className="bg-white border border-slate-200 p-3.5 rounded-xl space-y-2">
-                              <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider font-mono">
-                                Technician Labour Charge (UGX)
-                              </h4>
-                              <div className="flex items-center gap-2">
-                                <input
-                                  type="number"
-                                  min={0}
-                                  step={5000}
-                                  value={activeJob.labourCost !== undefined ? activeJob.labourCost : 50000}
-                                  onChange={async (e) => {
-                                    const val = parseInt(e.target.value) || 0;
-                                    const newGrandTotal = servicesTotal + val + partsTotal + homeFee;
-                                    await fetch(`/api/services/${activeJob.id}/status`, {
-                                      method: 'PUT',
-                                      headers: { 'Content-Type': 'application/json' },
-                                      body: JSON.stringify({
-                                        labourCost: val,
-                                        cost: newGrandTotal,
-                                      }),
-                                    });
-                                    onRefreshAll();
-                                  }}
-                                  className="w-full sm:w-60 text-xs p-2 border border-slate-300 rounded-lg font-bold text-slate-900 bg-slate-50 focus:bg-white"
-                                  placeholder="Enter Labour Charge"
-                                />
-                                <span className="text-3xs text-slate-500 font-mono">
-                                  💡 Labour charge automatically added to final invoice.
-                                </span>
-                              </div>
-                            </div>
-
-                            {/* Spare Parts Allocation */}
-                            <div className="bg-white border border-gray-200 p-3.5 rounded-xl space-y-3">
-                              <div className="flex items-center justify-between">
-                                <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wider font-mono">
-                                  Allocate Approved Inventory Spare Parts & Lubricants
-                                </h4>
-                                <button
-                                  type="button"
-                                  onClick={() => setShowAllParts(!showAllParts)}
-                                  className="text-[10px] font-bold text-purple-700 bg-purple-50 hover:bg-purple-100 px-2 py-0.5 rounded cursor-pointer transition border border-purple-200"
-                                >
-                                  {showAllParts ? '🔒 Filter Service Parts Only' : '🔓 Show All Inventory Parts (Extra Cost)'}
-                                </button>
-                              </div>
-
-                              {(() => {
-                                const filteredParts = getCorrespondingInventoryParts(activeJob.serviceType, inventory);
-                                return (
-                                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                                    <div className="sm:col-span-2">
-                                      <label className="block text-4xs font-bold text-gray-500 uppercase mb-1">
-                                        Select Corresponding Stock Item ({filteredParts.length} parts match)
-                                      </label>
-                                      <select
-                                        value={partToRequest}
-                                        onChange={(e) => setPartToRequest(e.target.value)}
-                                        className="w-full text-2xs p-1.5 border border-gray-200 rounded font-medium text-slate-900 bg-slate-50"
-                                      >
-                                        <option value="">-- Choose Approved Stock Item --</option>
-                                        {filteredParts.map((item) => (
-                                          <option key={item.id} value={item.id}>
-                                            {item.partName} ({item.quantity} available - UGX {item.price.toLocaleString()})
-                                          </option>
-                                        ))}
-                                      </select>
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-2xs">
+                                    <div>
+                                      <span className="text-3xs font-mono font-bold text-slate-400 block uppercase">Customer Name</span>
+                                      <span className="font-extrabold text-slate-900">{cust?.name || 'Valued Customer'}</span>
                                     </div>
                                     <div>
-                                      <label className="block text-4xs font-bold text-gray-500 uppercase mb-1">Qty</label>
-                                      <input
-                                        type="number"
-                                        min={1}
-                                        value={partQty}
-                                        onChange={(e) => setPartQty(parseInt(e.target.value) || 1)}
-                                        className="w-full text-2xs p-1.5 border border-gray-200 rounded font-bold text-slate-900"
-                                      />
+                                      <span className="text-3xs font-mono font-bold text-slate-400 block uppercase">Contact Phone</span>
+                                      <span className="font-bold text-slate-800">{activeJob.contactPhone || cust?.phone || '+256 700 000000'}</span>
+                                    </div>
+                                    <div>
+                                      <span className="text-3xs font-mono font-bold text-slate-400 block uppercase">Booking Date & Time</span>
+                                      <span className="font-mono text-slate-800">{new Date(activeJob.bookingDate).toLocaleString()}</span>
+                                    </div>
+                                    <div>
+                                      <span className="text-3xs font-mono font-bold text-slate-400 block uppercase">Vehicle Details</span>
+                                      <span className="font-bold text-slate-900">{veh?.make} {veh?.model} ({veh?.registrationNumber})</span>
+                                    </div>
+                                    <div className="sm:col-span-2">
+                                      <span className="text-3xs font-mono font-bold text-slate-400 block uppercase">
+                                        {activeJob.isHomeService ? 'Home Delivery Location' : 'Parking Yard Location'}
+                                      </span>
+                                      <span className="font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 inline-block mt-0.5">
+                                        {activeJob.isHomeService
+                                          ? `📍 Address: ${activeJob.homeAddress || 'Plot 42 Naguru Drive, Kampala'}${activeJob.homeLandmark ? ` (${activeJob.homeLandmark})` : ''}`
+                                          : `🅿️ Location: ${activeJob.assignedDeliveryBay || 'Kampala Central Yard (Slot A12)'}`}
+                                      </span>
                                     </div>
                                   </div>
-                                );
-                              })()}
 
-                              <div className="flex items-center justify-between pt-1">
-                                <button
-                                  type="button"
-                                  onClick={async () => {
-                                    if (!partToRequest) return;
-                                    const item = inventory.find((i) => i.id === partToRequest);
-                                    if (!item) return;
-
-                                    const newPart = {
-                                      partId: item.id,
-                                      partName: item.partName,
-                                      quantity: partQty,
-                                      unitPrice: item.price,
-                                      totalCost: item.price * partQty,
-                                    };
-
-                                    const updatedParts = [...(activeJob.partsAllocated || []), newPart];
-                                    const newPartsTotal = updatedParts.reduce((s, p) => s + p.totalCost, 0);
-                                    const newGrandTotal = servicesTotal + currentLabour + newPartsTotal + homeFee;
-
-                                    await fetch(`/api/services/${activeJob.id}/status`, {
-                                      method: 'PUT',
-                                      headers: { 'Content-Type': 'application/json' },
-                                      body: JSON.stringify({
-                                        partsAllocated: updatedParts,
-                                        cost: newGrandTotal,
-                                      }),
-                                    });
-                                    setPartToRequest('');
-                                    setPartQty(1);
-                                    onRefreshAll();
-                                  }}
-                                  className="px-4 py-1.5 bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold rounded-xl cursor-pointer shadow-xs flex items-center gap-1.5"
-                                >
-                                  <Package className="w-3.5 h-3.5" />
-                                  <span>Allocate Part & Add to Invoice</span>
-                                </button>
-                              </div>
-                            </div>
-
-                            {/* Automatic Itemized Final Invoice Breakdown */}
-                            <div className="bg-slate-900 text-white p-4 rounded-xl space-y-3 font-mono">
-                              <h4 className="text-xs font-bold text-amber-400 uppercase tracking-wider flex items-center justify-between border-b border-slate-800 pb-2">
-                                <span>Itemized Customer Invoice Calculation</span>
-                                <span className="text-3xs text-slate-400 font-normal">Real-Time Total</span>
-                              </h4>
-
-                              <div className="space-y-1.5 text-2xs">
-                                <div className="flex justify-between text-slate-300">
-                                  <span>Customer Selected Services:</span>
-                                  <span className="font-bold">UGX {servicesTotal.toLocaleString()}</span>
+                                  {/* Diagnostic / Customer Notes */}
+                                  {activeJob.diagnosticNotes && (
+                                    <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-3xs text-slate-700 italic">
+                                      <span className="font-bold not-italic text-slate-900 block mb-0.5">Customer Instructions:</span>
+                                      "{activeJob.diagnosticNotes}"
+                                    </div>
+                                  )}
                                 </div>
-                                {requestedServices.map((it, idx) => (
-                                  <div key={idx} className="flex justify-between text-3xs text-slate-400 pl-3">
-                                    <span>• {it.title} ({it.progress || 'Not Started'})</span>
-                                    <span>UGX {it.cost.toLocaleString()}</span>
+
+                                {/* Requested Services Overview (All Requested Services Displayed At Once) */}
+                                <div className="bg-white border border-slate-200 p-4 rounded-xl space-y-3">
+                                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
+                                    <div>
+                                      <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider font-mono flex items-center gap-1.5">
+                                        <ClipboardCheck className="w-4 h-4 text-emerald-600" />
+                                        <span>Customer Requested Services ({requestedServices.length})</span>
+                                      </h4>
+                                      <p className="text-3xs text-slate-500 font-mono mt-0.5">
+                                        All requested services grouped under this vehicle job card.
+                                      </p>
+                                    </div>
+
+                                    {/* Action: Mark All Repairs Completed At Once */}
+                                    {activeJob.status !== ServiceStatus.COMPLETED ? (
+                                      <button
+                                        type="button"
+                                        onClick={async () => {
+                                          const updatedList = requestedServices.map((item) => ({
+                                            ...item,
+                                            progress: 'Completed' as const,
+                                          }));
+                                          await fetch(`/api/services/${activeJob.id}/status`, {
+                                            method: 'PUT',
+                                            headers: { 'Content-Type': 'application/json' },
+                                            body: JSON.stringify({
+                                              selectedServicesList: updatedList,
+                                              status: ServiceStatus.COMPLETED,
+                                            }),
+                                          });
+                                          onRefreshAll();
+                                        }}
+                                        className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black rounded-xl transition cursor-pointer shadow-md flex items-center justify-center gap-1.5 shrink-0"
+                                      >
+                                        <span>⚡ Mark All Repairs Completed</span>
+                                      </button>
+                                    ) : (
+                                      <span className="px-3 py-1 bg-emerald-100 text-emerald-900 border border-emerald-300 rounded-lg text-3xs font-extrabold font-mono flex items-center gap-1">
+                                        ✓ All Repairs Completed
+                                      </span>
+                                    )}
                                   </div>
-                                ))}
 
-                                <div className="flex justify-between text-slate-300 pt-1 border-t border-slate-800">
-                                  <span>Technician Labour Charge:</span>
-                                  <span className="font-bold text-amber-300">UGX {currentLabour.toLocaleString()}</span>
+                                  {/* All Requested Services List (Displayed at once without per-service toggle buttons) */}
+                                  <div className="space-y-2">
+                                    {requestedServices.map((srvItem, idx) => {
+                                      const isItemCompleted = srvItem.progress === 'Completed' || activeJob.status === ServiceStatus.COMPLETED;
+                                      return (
+                                        <div
+                                          key={srvItem.id || idx}
+                                          className="p-3 bg-slate-50 border border-slate-200/80 rounded-xl flex items-center justify-between gap-3"
+                                        >
+                                          <div className="flex items-center gap-2.5">
+                                            <div className={`w-5 h-5 rounded-full flex items-center justify-center text-3xs font-bold ${
+                                              isItemCompleted ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-600'
+                                            }`}>
+                                              {isItemCompleted ? '✓' : idx + 1}
+                                            </div>
+                                            <div>
+                                              <h5 className="text-xs font-extrabold text-slate-900">{srvItem.title}</h5>
+                                              <span className="text-3xs font-mono font-bold text-emerald-700">
+                                                UGX {srvItem.cost.toLocaleString()}
+                                              </span>
+                                            </div>
+                                          </div>
+
+                                          <span className={`text-3xs font-mono font-bold px-2.5 py-1 rounded-md border ${
+                                            isItemCompleted
+                                              ? 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                                              : 'bg-amber-100 text-amber-900 border-amber-300'
+                                          }`}>
+                                            {isItemCompleted ? '✓ Completed' : '⏳ In Progress'}
+                                          </span>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
                                 </div>
 
-                                {activeJob.partsAllocated && activeJob.partsAllocated.length > 0 && (
-                                  <div className="pt-1 border-t border-slate-800 space-y-1">
+                                {/* Technician Labour Charge Input */}
+                                <div className="bg-white border border-slate-200 p-3.5 rounded-xl space-y-2">
+                                  <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider font-mono">
+                                    Technician Labour Charge (UGX)
+                                  </h4>
+                                  <div className="flex items-center gap-2">
+                                    <input
+                                      type="number"
+                                      min={0}
+                                      step={5000}
+                                      value={activeJob.labourCost !== undefined ? activeJob.labourCost : 50000}
+                                      onChange={async (e) => {
+                                        const val = parseInt(e.target.value) || 0;
+                                        const newGrandTotal = servicesTotal + val + partsTotal + homeFee;
+                                        await fetch(`/api/services/${activeJob.id}/status`, {
+                                          method: 'PUT',
+                                          headers: { 'Content-Type': 'application/json' },
+                                          body: JSON.stringify({
+                                            labourCost: val,
+                                            cost: newGrandTotal,
+                                          }),
+                                        });
+                                        onRefreshAll();
+                                      }}
+                                      className="w-full sm:w-60 text-xs p-2 border border-slate-300 rounded-lg font-bold text-slate-900 bg-slate-50 focus:bg-white"
+                                      placeholder="Enter Labour Charge"
+                                    />
+                                    <span className="text-3xs text-slate-500 font-mono">
+                                      💡 Labour charge automatically added to final invoice.
+                                    </span>
+                                  </div>
+                                </div>
+
+                                {/* Automatic Itemized Final Invoice Breakdown */}
+                                <div className="bg-slate-900 text-white p-4 rounded-xl space-y-3 font-mono">
+                                  <h4 className="text-xs font-bold text-amber-400 uppercase tracking-wider flex items-center justify-between border-b border-slate-800 pb-2">
+                                    <span>Itemized Customer Invoice Calculation</span>
+                                    <span className="text-3xs text-slate-400 font-normal">Real-Time Total</span>
+                                  </h4>
+
+                                  <div className="space-y-1.5 text-2xs">
                                     <div className="flex justify-between text-slate-300">
-                                      <span>Allocated Spare Parts & Lubricants:</span>
-                                      <span className="font-bold text-purple-300">UGX {partsTotal.toLocaleString()}</span>
+                                      <span>Customer Selected Services:</span>
+                                      <span className="font-bold">UGX {servicesTotal.toLocaleString()}</span>
                                     </div>
-                                    {activeJob.partsAllocated.map((pt, i) => (
-                                      <div key={i} className="flex justify-between text-3xs text-slate-400 pl-3">
-                                        <span>• {pt.partName} (x{pt.quantity})</span>
-                                        <span>UGX {pt.totalCost.toLocaleString()}</span>
+                                    {requestedServices.map((it, idx) => (
+                                      <div key={idx} className="flex justify-between text-3xs text-slate-400 pl-3">
+                                        <span>• {it.title} ({it.progress || 'In Progress'})</span>
+                                        <span>UGX {it.cost.toLocaleString()}</span>
                                       </div>
                                     ))}
-                                  </div>
-                                )}
 
-                                {activeJob.isHomeService && (
-                                  <div className="flex justify-between text-blue-300 pt-1 border-t border-slate-800">
-                                    <span>Booking Type: HOME SERVICE (Doorstep Location):</span>
-                                    <span className="font-bold">UGX 0</span>
-                                  </div>
-                                )}
+                                    <div className="flex justify-between text-slate-300 pt-1 border-t border-slate-800">
+                                      <span>Technician Labour Charge:</span>
+                                      <span className="font-bold text-amber-300">UGX {currentLabour.toLocaleString()}</span>
+                                    </div>
 
-                                <div className="flex justify-between text-sm font-black text-emerald-400 pt-2 border-t border-slate-700">
-                                  <span>FINAL INVOICE GRAND TOTAL:</span>
-                                  <span>UGX {grandTotalInvoice.toLocaleString()}</span>
+                                    {activeJob.partsAllocated && activeJob.partsAllocated.length > 0 && (
+                                      <div className="pt-1 border-t border-slate-800 space-y-1">
+                                        <div className="flex justify-between text-slate-300">
+                                          <span>Allocated Spare Parts & Lubricants:</span>
+                                          <span className="font-bold text-purple-300">UGX {partsTotal.toLocaleString()}</span>
+                                        </div>
+                                        {activeJob.partsAllocated.map((pt, i) => (
+                                          <div key={i} className="flex justify-between text-3xs text-slate-400 pl-3">
+                                            <span>• {pt.partName} (x{pt.quantity})</span>
+                                            <span>UGX {pt.totalCost.toLocaleString()}</span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+
+                                    {activeJob.isHomeService && (
+                                      <div className="flex justify-between text-blue-300 pt-1 border-t border-slate-800">
+                                        <span>Booking Type: HOME SERVICE (Doorstep Location):</span>
+                                        <span className="font-bold">UGX 0</span>
+                                      </div>
+                                    )}
+
+                                    <div className="flex justify-between text-sm font-black text-emerald-400 pt-2 border-t border-slate-700">
+                                      <span>FINAL INVOICE GRAND TOTAL:</span>
+                                      <span>UGX {grandTotalInvoice.toLocaleString()}</span>
+                                    </div>
+                                  </div>
                                 </div>
-                              </div>
-                            </div>
 
-                            {/* Technician Observations Log */}
-                            <div className="space-y-1.5">
-                              <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wider font-mono">
-                                Technician Observations Log
-                              </h4>
-                              <textarea
-                                rows={2}
-                                value={techNotes}
-                                onChange={(e) => setTechNotes(e.target.value)}
-                                placeholder="Write observations (e.g. Brake pads thin, oil filter leaky, suspension loose)..."
-                                className="w-full text-xs p-2.5 bg-white border border-gray-200 rounded-lg focus:ring-1 focus:ring-orange-500"
-                              />
-                              <button
-                                type="button"
-                                onClick={() => handleTechnicianUpdate(activeJob.id, activeJob.status)}
-                                className="px-4 py-1 bg-slate-800 hover:bg-slate-700 text-white text-2xs font-bold rounded cursor-pointer"
-                              >
-                                Update Observation Logs Only
-                              </button>
-                            </div>
+                                {/* Technician Observations Log */}
+                                <div className="space-y-1.5">
+                                  <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wider font-mono">
+                                    Technician Observations Log
+                                  </h4>
+                                  <textarea
+                                    rows={2}
+                                    value={techNotes}
+                                    onChange={(e) => setTechNotes(e.target.value)}
+                                    placeholder="Write observations (e.g. Brake pads thin, oil filter leaky, suspension loose)..."
+                                    className="w-full text-xs p-2.5 bg-white border border-gray-200 rounded-lg focus:ring-1 focus:ring-orange-500"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => handleTechnicianUpdate(activeJob.id, activeJob.status)}
+                                    className="px-4 py-1 bg-slate-800 hover:bg-slate-700 text-white text-2xs font-bold rounded cursor-pointer"
+                                  >
+                                    Update Observation Logs Only
+                                  </button>
+                                </div>
 
-                            {/* Prominent Multi-Role Handoff Action Banner */}
-                            <div className="bg-gradient-to-r from-emerald-900 via-teal-900 to-slate-900 text-white p-4 rounded-xl border border-emerald-400/50 shadow-md flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                              <div className="space-y-0.5">
-                                <span className="text-3xs font-mono font-bold uppercase tracking-wider text-emerald-300">
-                                  FINALIZE WORKSHOP REPAIR
-                                </span>
-                                <h4 className="text-sm font-black text-white">All Services Rendered & Car Complete?</h4>
-                                <p className="text-3xs text-emerald-100">
-                                  Notify Service Manager & Customer while dispatching pickup slot to Parking Attendant.
-                                </p>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => handleOpenHandoffModal(activeJob.id)}
-                                className="px-4 py-2.5 bg-emerald-400 hover:bg-emerald-300 text-slate-950 font-black text-xs rounded-xl shadow-lg transition shrink-0 flex items-center justify-center gap-1.5 cursor-pointer"
-                              >
-                                <CheckCircle2 className="w-4 h-4 text-slate-950" />
-                                <span>Complete & Hand Off Vehicle</span>
-                              </button>
-                            </div>
+                                {/* Prominent Multi-Role Handoff Action Banner */}
+                                <div className="bg-gradient-to-r from-emerald-900 via-teal-900 to-slate-900 text-white p-4 rounded-xl border border-emerald-400/50 shadow-md flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                  <div className="space-y-0.5">
+                                    <span className="text-3xs font-mono font-bold uppercase tracking-wider text-emerald-300">
+                                      FINALIZE WORKSHOP REPAIR
+                                    </span>
+                                    <h4 className="text-sm font-black text-white">All Services Rendered & Car Complete?</h4>
+                                    <p className="text-3xs text-emerald-100">
+                                      Notify Service Manager & Customer while dispatching pickup slot to Parking Attendant.
+                                    </p>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenHandoffModal(activeJob.id)}
+                                    className="px-4 py-2.5 bg-emerald-400 hover:bg-emerald-300 text-slate-950 font-black text-xs rounded-xl shadow-lg transition shrink-0 flex items-center justify-center gap-1.5 cursor-pointer"
+                                  >
+                                    <CheckCircle2 className="w-4 h-4 text-slate-950" />
+                                    <span>Complete & Hand Off Vehicle</span>
+                                  </button>
+                                </div>
+                              </>
+                            )}
 
                             {techSuccess && (
                               <div className="bg-emerald-50 text-emerald-700 text-xs p-3 rounded-lg border border-emerald-100 font-semibold">
@@ -2495,10 +2585,30 @@ Format as a polite, clean, structured layout. Avoid deep developer jargon.`;
                                 </span>
                               </div>
 
-                              <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-100 space-y-1">
-                                <span className="text-xs font-bold text-slate-800 block">{srv.serviceType}</span>
+                              <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-100 space-y-1.5">
+                                <div className="flex items-center justify-between text-3xs font-mono font-bold text-slate-500 uppercase">
+                                  <span>Services Grouped Under Vehicle:</span>
+                                  <span className="text-sky-700">{srv.isHomeService ? '🏠 Home Service' : '🛠️ Workshop'}</span>
+                                </div>
+                                {(() => {
+                                  const reqList = srv.selectedServicesList && srv.selectedServicesList.length > 0
+                                    ? srv.selectedServicesList
+                                    : [{ title: srv.serviceType.replace(/^🏠 Home Service:\s*/, ''), cost: srv.cost }];
+                                  return (
+                                    <ul className="space-y-0.5 text-2xs font-bold text-slate-800">
+                                      {reqList.map((item, idx) => (
+                                        <li key={idx} className="flex items-center justify-between">
+                                          <span className="truncate flex items-center gap-1">
+                                            <span className="text-sky-600 font-bold">•</span> {item.title}
+                                          </span>
+                                          <span className="text-3xs font-mono text-slate-500">UGX {item.cost.toLocaleString()}</span>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  );
+                                })()}
                                 {srv.diagnosticNotes && (
-                                  <p className="text-3xs text-slate-500 line-clamp-2 italic">
+                                  <p className="text-3xs text-slate-500 line-clamp-2 italic pt-1 border-t border-slate-100">
                                     &quot;{srv.diagnosticNotes}&quot;
                                   </p>
                                 )}
@@ -2579,11 +2689,35 @@ Format as a polite, clean, structured layout. Avoid deep developer jargon.`;
                                 </span>
                               </div>
 
-                              <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-100 space-y-1">
-                                <span className="text-xs font-bold text-slate-800 block">{srv.serviceType}</span>
+                              <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-100 space-y-1.5">
+                                <div className="flex items-center justify-between text-3xs font-mono font-bold text-slate-500 uppercase">
+                                  <span>Services Grouped Under Vehicle:</span>
+                                  <span className="text-sky-700">{srv.isHomeService ? '🏠 Home Service' : '🛠️ Workshop'}</span>
+                                </div>
+                                {(() => {
+                                  const reqList = srv.selectedServicesList && srv.selectedServicesList.length > 0
+                                    ? srv.selectedServicesList
+                                    : [{ title: srv.serviceType.replace(/^🏠 Home Service:\s*/, ''), cost: srv.cost, progress: srv.status === ServiceStatus.COMPLETED ? 'Completed' : 'In Progress' }];
+                                  return (
+                                    <ul className="space-y-0.5 text-2xs font-bold text-slate-800">
+                                      {reqList.map((item, idx) => (
+                                        <li key={idx} className="flex items-center justify-between">
+                                          <span className="truncate flex items-center gap-1">
+                                            <span className="text-sky-600 font-bold">•</span> {item.title}
+                                          </span>
+                                          <span className={`text-[8px] font-mono font-bold px-1 rounded ${
+                                            item.progress === 'Completed' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                                          }`}>
+                                            {item.progress || 'In Progress'}
+                                          </span>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  );
+                                })()}
                                 {tech && (
-                                  <div className="flex items-center gap-1.5 text-xs text-sky-700 font-bold pt-1">
-                                    <span>👨‍🔧 Assigned:</span>
+                                  <div className="flex items-center gap-1.5 text-xs text-sky-700 font-bold pt-1 border-t border-slate-100">
+                                    <span>👨‍🔧 Assigned Mechanic:</span>
                                     <span>{tech.name}</span>
                                   </div>
                                 )}
