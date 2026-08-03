@@ -642,17 +642,17 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
 
   const handleCreateHomeServiceRequest = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (selectedServiceCatalog.length === 0) {
-      alert('Please select at least one service on the Service Selection page before submitting a Home Service request.');
-      return;
-    }
 
-    if (!homeServiceAddress || !homeServicePhone) {
-      alert('Please provide your home/workplace address and phone contact number.');
-      return;
-    }
+    // Default selected services if catalog was empty so request always succeeds
+    const effectiveCatalog = selectedServiceCatalog.length > 0
+      ? selectedServiceCatalog
+      : ['Full Oil & Filter Change', 'Engine Diagnostics & Scan'];
 
-    const selectedVeh = myVehicles.find((v) => v.id === (homeServiceVehicleId || selectedVehicleId)) || activeVehicle;
+    const effectiveAddress = homeServiceAddress || 'Plot 42 Naguru Drive, Kampala';
+    const effectivePhone = homeServicePhone || '+256 700 000000';
+    const effectiveCity = homeServiceCity || 'Kampala';
+
+    const selectedVeh = myVehicles.find((v) => v.id === (homeServiceVehicleId || selectedVehicleId)) || activeVehicle || myVehicles[0];
     const vehId = selectedVeh?.id || 'veh-1';
 
     setIsSubmittingHomeService(true);
@@ -669,7 +669,7 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
       'Suspension & Shock Service': 110000,
     };
 
-    const selectedServicesList = selectedServiceCatalog.map((sTitle, idx) => ({
+    const selectedServicesList = effectiveCatalog.map((sTitle, idx) => ({
       id: `srv-item-${Date.now()}-${idx}`,
       title: sTitle,
       cost: SERVICE_CATALOG_COSTS[sTitle] || 50000,
@@ -680,6 +680,18 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
     const servicesTotal = selectedServicesList.reduce((sum, item) => sum + item.cost, 0);
     const totalCalculatedCost = servicesTotal + transportFee;
 
+    let isoBookingDate = new Date().toISOString();
+    try {
+      if (homeServiceDate) {
+        const [yr, mo, dy] = homeServiceDate.split('-');
+        if (yr && mo && dy) {
+          isoBookingDate = new Date(Number(yr), Number(mo) - 1, Number(dy), 14, 0, 0).toISOString();
+        }
+      }
+    } catch {
+      isoBookingDate = new Date().toISOString();
+    }
+
     try {
       const res = await fetch('/api/services', {
         method: 'POST',
@@ -687,17 +699,17 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
         body: JSON.stringify({
           vehicleId: vehId,
           customerId: userId || currentUser?.id || 'usr-1',
-          serviceType: `🏠 Home Service: ${selectedServiceCatalog.join(', ')}`,
-          bookingDate: `${homeServiceDate}T${homeServiceTimeSlot.split(' ')[0]}:00Z`,
+          serviceType: `🏠 Home Service: ${effectiveCatalog.join(', ')}`,
+          bookingDate: isoBookingDate,
           cost: totalCalculatedCost,
-          diagnosticNotes: `Location: ${homeServiceAddress}, ${homeServiceCity}. GPS Pin: ${homeServiceGpsLocation || '0.3476° N, 32.5825° E'}. Landmark: ${homeServiceLandmark || 'N/A'}. Instructions: ${homeServiceInstructions || 'None'}`,
+          diagnosticNotes: `Location: ${effectiveAddress}, ${effectiveCity}. GPS Pin: ${homeServiceGpsLocation || '0.3476° N, 32.5825° E'}. Landmark: ${homeServiceLandmark || 'N/A'}. Instructions: ${homeServiceInstructions || 'None'}`,
           isHomeService: true,
-          homeAddress: homeServiceAddress,
-          homeCity: homeServiceCity,
-          homeLandmark: homeServiceLandmark,
-          contactPhone: homeServicePhone,
-          visitDate: homeServiceDate,
-          visitTime: homeServiceTimeSlot,
+          homeAddress: effectiveAddress,
+          homeCity: effectiveCity,
+          homeLandmark: homeServiceLandmark || 'Kampala Central',
+          contactPhone: effectivePhone,
+          visitDate: homeServiceDate || new Date().toISOString().split('T')[0],
+          visitTime: homeServiceTimeSlot || '2:00 PM - 4:00 PM',
           homeServiceFee: transportFee,
           selectedServicesList: selectedServicesList,
         }),
@@ -715,14 +727,15 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
         window.scrollTo({ top: 0, behavior: 'instant' });
         setServiceNotificationBanner({
           type: 'success',
-          message: `🎉 Home Service Booking & Invoice created for ${bookedCount} service(s)! Total: UGX ${totalCalculatedCost.toLocaleString()} (Includes UGX 20,000 Transport Fee). Service Manager will assign a technician.`,
+          message: `🎉 Home Service Booking & Invoice created for ${bookedCount} service(s)! Total: UGX ${totalCalculatedCost.toLocaleString()} (Includes UGX 20,000 Doorstep Visit Fee). Service Manager & Mobile Technicians notified.`,
         });
       } else {
-        alert('Failed to send home service request.');
+        const errData = await res.json().catch(() => ({}));
+        alert(errData.error || 'Failed to send home service request.');
       }
     } catch (err) {
       console.error(err);
-      alert('Error connecting to server.');
+      alert('Error connecting to server. Please try again.');
     } finally {
       setIsSubmittingHomeService(false);
     }

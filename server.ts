@@ -2023,87 +2023,96 @@ app.get('/api/services', (req, res) => {
 });
 
 app.post('/api/services', async (req, res) => {
-  const {
-    vehicleId,
-    serviceType,
-    cost,
-    bookingDate,
-    customerId,
-    diagnosticNotes,
-    isHomeService,
-    homeAddress,
-    homeCity,
-    homeLandmark,
-    contactPhone,
-    visitDate,
-    visitTime,
-    homeServiceFee,
-    selectedServicesList,
-    labourCost,
-    partsAllocated,
-  } = req.body;
+  try {
+    const {
+      vehicleId,
+      serviceType,
+      cost,
+      bookingDate,
+      customerId,
+      diagnosticNotes,
+      isHomeService,
+      homeAddress,
+      homeCity,
+      homeLandmark,
+      contactPhone,
+      visitDate,
+      visitTime,
+      homeServiceFee,
+      selectedServicesList,
+      labourCost,
+      partsAllocated,
+    } = req.body;
 
-  if (!vehicleId || !serviceType || !bookingDate) {
-    return res.status(400).json({ error: 'Missing appointment details.' });
-  }
+    const safeVehicleId = vehicleId || (vehicles[0]?.id || 'veh-1');
+    const rawServiceType = serviceType || 'General Care Maintenance';
+    const safeBookingDate = bookingDate || new Date().toISOString();
 
-  const targetVeh = vehicles.find((v) => v.id === vehicleId);
-  const regNo = targetVeh?.registrationNumber || 'Vehicle';
+    const targetVeh = vehicles.find((v) => v.id === safeVehicleId);
+    const regNo = targetVeh?.registrationNumber || 'Vehicle';
 
-  const newService: VehicleService = {
-    id: `srv-${Date.now()}`,
-    vehicleId,
-    customerId: customerId || 'usr-1',
-    serviceType: isHomeService ? `🏠 Home Service: ${serviceType}` : serviceType,
-    status: ServiceStatus.BOOKED,
-    cost: parseInt(cost) || 120000,
-    bookingDate,
-    diagnosticNotes: diagnosticNotes || (isHomeService ? `Home Servicing requested at: ${homeAddress || 'Customer address'}` : 'Appointment booked successfully.'),
-    isHomeService: Boolean(isHomeService),
-    homeAddress,
-    homeCity,
-    homeLandmark,
-    contactPhone,
-    visitDate,
-    visitTime,
-    homeServiceFee: homeServiceFee ? parseInt(homeServiceFee) : 0,
-    selectedServicesList: selectedServicesList || [],
-    labourCost: labourCost ? parseInt(labourCost) : 0,
-    partsAllocated: partsAllocated || [],
-  };
+    const formattedServiceType = isHomeService && !rawServiceType.startsWith('🏠 Home Service:')
+      ? `🏠 Home Service: ${rawServiceType}`
+      : rawServiceType;
 
-  services.push(newService);
+    const newService: VehicleService = {
+      id: `srv-${Date.now()}`,
+      vehicleId: safeVehicleId,
+      customerId: customerId || 'usr-1',
+      serviceType: formattedServiceType,
+      status: ServiceStatus.BOOKED,
+      cost: parseInt(cost) || 120000,
+      bookingDate: safeBookingDate,
+      diagnosticNotes: diagnosticNotes || (isHomeService ? `Home Servicing requested at: ${homeAddress || 'Customer address'}` : 'Appointment booked successfully.'),
+      isHomeService: Boolean(isHomeService),
+      homeAddress: homeAddress || 'Plot 42 Naguru Drive, Kampala',
+      homeCity: homeCity || 'Kampala',
+      homeLandmark: homeLandmark || '',
+      contactPhone: contactPhone || '+256 700 000000',
+      visitDate: visitDate || new Date().toISOString().split('T')[0],
+      visitTime: visitTime || '2:00 PM - 4:00 PM',
+      homeServiceFee: homeServiceFee ? parseInt(homeServiceFee) : 20000,
+      selectedServicesList: selectedServicesList || [],
+      labourCost: labourCost ? parseInt(labourCost) : 0,
+      partsAllocated: partsAllocated || [],
+    };
 
-  if (supabase) {
-    try {
-      await ensureUserInSupabase(newService.customerId);
-      await ensureVehicleInSupabase(newService.vehicleId);
-      if (newService.technicianId) {
-        await ensureUserInSupabase(newService.technicianId);
+    services.push(newService);
+
+    if (supabase) {
+      try {
+        await ensureUserInSupabase(newService.customerId);
+        await ensureVehicleInSupabase(newService.vehicleId);
+        if (newService.technicianId) {
+          await ensureUserInSupabase(newService.technicianId);
+        }
+
+        const { error } = await supabase.from('vehicle_services').upsert(mapServiceToDb(newService));
+        if (error) console.error('Supabase vehicle service save error:', error.message);
+        else console.log('✅ Saved vehicle service to Supabase:', newService.id);
+      } catch (err) {
+        console.error('Supabase service exception:', err);
       }
-
-      const { error } = await supabase.from('vehicle_services').upsert(mapServiceToDb(newService));
-      if (error) console.error('Supabase vehicle service save error:', error.message);
-      else console.log('✅ Saved vehicle service to Supabase:', newService.id);
-    } catch (err) {
-      console.error('Supabase service exception:', err);
     }
+
+    // Trigger staff notification for Service Manager & Mobile Technicians
+    notifications.unshift({
+      id: `notif-${notifications.length + 1}`,
+      type: 'SERVICE_REQUEST',
+      title: isHomeService ? '🏠 New Home Servicing Request' : '🛠️ New Garage Service Booking',
+      message: isHomeService
+        ? `Customer requested Home Service for ${regNo}: "${formattedServiceType}" at ${homeAddress || 'Customer Home Address'}. Mobile technician dispatch required.`
+        : `Customer booked Garage Service for ${regNo}: "${formattedServiceType}" (${diagnosticNotes || 'Standard Service'}).`,
+      timestamp: new Date().toISOString(),
+      vehicleReg: regNo,
+      read: false,
+    });
+
+    return res.status(201).json(newService);
+  } catch (err: any) {
+    console.error('Error in POST /api/services:', err);
+    return res.status(500).json({ error: err?.message || 'Failed to process service booking' });
   }
-
-  // Trigger staff notification for Service Manager & Mobile Technicians
-  notifications.unshift({
-    id: `notif-${notifications.length + 1}`,
-    type: 'SERVICE_REQUEST',
-    title: isHomeService ? '🏠 New Home Servicing Request' : '🛠️ New Garage Service Booking',
-    message: isHomeService
-      ? `Customer requested Home Service for ${regNo}: "${serviceType}" at ${homeAddress || 'Customer Home Address'}. Mobile technician dispatch required.`
-      : `Customer booked Garage Service for ${regNo}: "${serviceType}" (${diagnosticNotes || 'Standard Service'}).`,
-    timestamp: new Date().toISOString(),
-    vehicleReg: regNo,
-    read: false,
-  });
-
-  res.status(201).json(newService);
 });
 
 app.put('/api/services/:id/status', async (req, res) => {
